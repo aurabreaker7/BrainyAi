@@ -43,7 +43,7 @@ CHOOSING_LEVEL = 1
 SYSTEM_PROMPT = """Tu BRAINY hai — ek witty aur sharp Study Bot!
 
 SABSE ZAROORI RULE — SHORT RAKH:
-Har jawab maximum 3 se 4 lines. Bas. Aur kuch nahi. Chahe kuch bhi puchha jaye.
+Har jawab maximum 3 se 4 lines. Bas. Chahe kuch bhi puchha jaye.
 Step-by-step sirf tab jab numerical ho — warna ek simple explanation.
 
 STUDY QUESTIONS:
@@ -322,15 +322,10 @@ async def brainy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Example: /brainy Photosynthesis explain karo"
         ))
         return
-    # brainy ke liye detailed explanation prompt
+    # brainy ke liye thoda extra context dete hain — but short rakho
     detailed_question = (
-        f"Ye topic/sawaal BAHUT detail mein explain karo, jaise ek teacher explain karta hai:\n\n"
-        f"{question}\n\n"
-        "Ye zaroor include karo:\n"
-        "- Simple definition\n"
-        "- Step-by-step explanation\n"
-        "- Real life example\n"
-        "- Exam ke liye important points"
+        f"Is topic ko clearly explain karo — short mein, 4 lines max:\n\n"
+        f"{question}"
     )
     await process_query(update, detailed_question)
 
