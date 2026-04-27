@@ -610,7 +610,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("ask", ask_command))            # ✅ NEW
-    app.add_handler(CommandHandler("brainly", brainly_command))    # ✅ NEW
+    app.add_handler(CommandHandler("brainy", brainly_command))    # ✅ NEW
     app.add_handler(CommandHandler("maintenance", maintenance_command))  # ✅ NEW
     app.add_handler(CommandHandler("clear", clear_command))
     app.add_handler(CommandHandler("about", about_command))
