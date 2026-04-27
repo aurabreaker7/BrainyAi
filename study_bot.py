@@ -229,7 +229,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📚 Study Bot ready hai!\n\n"
             "Group mein use karo:\n"
             "/ask [question] — koi bhi sawaal poochho\n"
-            "/brainly [question] — detailed explanation lo\n\n"
+            "/brainy [question] — detailed explanation lo\n\n"
             "Private chat mein aao for full features!"
         ))
         return
@@ -248,7 +248,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "✅ CET/JEE/NEET questions\n\n"
         "Commands:\n"
         "/ask      - Seedha sawaal poochho\n"
-        "/brainly  - Detailed explanation lo\n"
+        "/brainy  - Detailed explanation lo\n"
         "/help     - Help menu\n"
         "/level    - Apna level set karo\n"
         "/quiz     - Random MCQ lo\n"
@@ -268,14 +268,14 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send(update, (
             "📖 Group Commands:\n\n"
             "/ask [sawaal]     — AI se seedha poochho\n"
-            "/brainly [sawaal] — Detailed explanation\n\n"
+            "/brainy [sawaal] — Detailed explanation\n\n"
             "Private chat mein /help bhejo full menu ke liye!"
         ))
         return
     await send(update, (
         "📖 Help Menu:\n\n"
         "/ask [sawaal]  - Seedha sawaal poochho\n"
-        "/brainly       - Detailed explanation\n"
+        "/brainy       - Detailed explanation\n"
         "/level         - Class/level set karo\n"
         "/quiz          - MCQ practice\n"
         "/formula       - Formulas list\n"
@@ -301,18 +301,18 @@ async def ask_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await process_query(update, question)
 
 
-# ── /brainly command ──────────────────────────────────────
-async def brainly_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ── /brainy command ──────────────────────────────────────
+async def brainy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await maintenance_guard(update):
         return
     question = update.message.text.partition(" ")[2].strip()
     if not question:
         await send(update, (
             "⚠️ Topic ya sawaal likho!\n"
-            "Example: /brainly Photosynthesis explain karo"
+            "Example: /brainy Photosynthesis explain karo"
         ))
         return
-    # Brainly ke liye detailed explanation prompt
+    # brainy ke liye detailed explanation prompt
     detailed_question = (
         f"Ye topic/sawaal BAHUT detail mein explain karo, jaise ek teacher explain karta hai:\n\n"
         f"{question}\n\n"
@@ -508,7 +508,7 @@ async def progress_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ✅ Group mein auto-respond BILKUL NAHI — sirf /ask aur /brainly
+    # ✅ Group mein auto-respond BILKUL NAHI — sirf /ask aur /brainy
     if is_group(update):
         return
 
@@ -610,7 +610,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("ask", ask_command))            # ✅ NEW
-    app.add_handler(CommandHandler("brainy", brainly_command))    # ✅ NEW
+    app.add_handler(CommandHandler("brainy", brainy_command))    # ✅ NEW
     app.add_handler(CommandHandler("maintenance", maintenance_command))  # ✅ NEW
     app.add_handler(CommandHandler("clear", clear_command))
     app.add_handler(CommandHandler("about", about_command))
