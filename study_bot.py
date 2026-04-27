@@ -1,5 +1,6 @@
 import os
 import logging
+import asyncio
 from dotenv import load_dotenv
 from groq import Groq
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
@@ -120,8 +121,25 @@ async def send(update: Update, text: str):
         await update.message.reply_text(text)
 
 
+def build_bar(percent: int) -> str:
+    """Progress bar banao — 10 blocks."""
+    filled = int(percent / 10)
+    return "█" * filled + "░" * (10 - filled)
+
+
+ANIMATION_FRAMES = [
+    (0,  "⏳ Sawaal samajh raha hoon"),
+    (15, "🔍 Knowledge search kar raha hoon"),
+    (30, "🧠 Dimag laga raha hoon"),
+    (45, "⚙️  Answer build kar raha hoon"),
+    (60, "🔥 Almost ready"),
+    (75, "✍️  Likh raha hoon"),
+    (90, "🚀 Last touches"),
+]
+
+
 async def process_query(update: Update, question: str):
-    """Core AI call — question le aur reply do."""
+    """Core AI call — real-time animation ke saath."""
     user_id = update.effective_user.id
     if user_id not in user_conversations:
         user_conversations[user_id] = []
@@ -136,14 +154,46 @@ async def process_query(update: Update, question: str):
     })
     trim_history(user_id)
 
-    await update.message.chat.send_action("typing")
+    # ── Pehle loading message bhejo ──
+    loading_msg = await update.message.reply_text(
+        f"⏳ Sawaal samajh raha hoon\n{build_bar(0)} 0%"
+    )
+
+    # ── AI call background mein start karo ──
+    loop = asyncio.get_event_loop()
+    ai_task = loop.run_in_executor(None, ai_call, user_conversations[user_id])
+
+    # ── Animation loop — AI complete hone tak ──
     try:
-        bot_response = ai_call(user_conversations[user_id])
+        for percent, label in ANIMATION_FRAMES:
+            if ai_task.done():
+                break
+            await loading_msg.edit_text(f"{label}\n{build_bar(percent)} {percent}%")
+            await asyncio.sleep(0.9)
+
+        # 90% ke baad bhi agar chal raha ho toh wait karo
+        dot = 0
+        while not ai_task.done():
+            dots = "." * (dot % 4)
+            await loading_msg.edit_text(f"🚀 Thoda aur wait karo{dots}\n{build_bar(90)} 90%")
+            dot += 1
+            await asyncio.sleep(0.8)
+
+        # ── 100% done ──
+        await loading_msg.edit_text(f"✅ Done!\n{build_bar(100)} 100%")
+        await asyncio.sleep(0.4)
+
+        bot_response = await ai_task
         user_conversations[user_id].append({"role": "assistant", "content": bot_response})
+
+        # Loading message delete karo, phir actual answer bhejo
+        await loading_msg.delete()
         await send(update, bot_response)
         print(f"✅ Response sent to {user_id} (key {current_key_index + 1})")
+
     except Exception as e:
         logger.error(f"AI error: {e}")
+        await loading_msg.delete()
         await send(update, f"❌ Kuch error aaya: {str(e)[:100]}\n\nThodi der baad phir try karo!")
 
 
