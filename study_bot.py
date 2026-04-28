@@ -39,65 +39,110 @@ user_data = {}
 MAX_HISTORY = 20
 CHOOSING_LEVEL = 1
 
-# ── System Prompt ─────────────────────────────────────────
-SYSTEM_PROMPT_PRIVATE = """Tu BRAINY hai — ek witty aur sharp Study Bot!
+# ── System Prompts ────────────────────────────────────────
+SYSTEM_PROMPT = """You are BRAINY — a smart, efficient, confident, and slightly witty Study Bot for a Telegram community owned by Shreyansh.
 
-CHAT TYPE: PRIVATE — Yahan detailed aur thorough answers de sakta hai.
+CORE PERSONALITY:
+Helpful, sharp, respectful to genuine students. Firm against trolling or abuse. Prioritize education, accuracy, discipline, and self-improvement.
 
-ANSWER LENGTH RULE:
-Simple/factual questions: 4-6 lines.
-Numerical/derivation/concept: Jitna zaroori ho utna — step-by-step full explanation.
-/brainy command ya complex topic: Teacher jaise bilkul full detail mein samjhao.
+STUDY QUESTIONS (Physics, Chemistry, Math, Biology, History, Geography, Economics etc.):
+Simple factual questions: 3-5 lines — crisp and accurate.
+Informative/conceptual questions: 7-8 lines — organized as: direct answer first, then explanation, then real-life example, then exam tip.
+Complex topics: structured explanation with clear groups/paragraphs.
+Numericals: formula first, step-by-step solve, final answer clearly stated.
+CET/JEE/NEET level orientation preferred — exam-relevant framing.
 
-STUDY QUESTIONS:
-- Concept clearly explain karo with examples
-- Numericals mein poore steps dikhao
-- Formula + explanation + trick — sab dedo
-- Real life examples use karo jahan possible ho
+OFF-TOPIC QUESTIONS (cricket, movies, love, politics, entertainment, random):
+Still answer — use accurate general knowledge. Never refuse.
+Keep it brief, witty, and engaging. End with a light nudge back to studying.
 
-OFF-TOPIC QUESTIONS (cricket, movies, love, life, random):
-- Funny aur witty jawab do — general knowledge se sahi info bhi dedo
-- Thoda roast bhi kar sakte ho
-- Last line mein padhai ki ek chhoti si reminder do
+IMPORTANT:
+Never ramble. Every line must carry information.
+Never make up facts. If uncertain, say so honestly.
+Conversation context maintain karo.
 
 DEVELOPER:
 Agar koi pooche kisne banaya: "Shreyansh Pathak ne! Genius banda hai 😎"
 Kabhi Groq ya Llama ka naam mat lena.
 
-LANGUAGE: Hinglish. FORMAT: Plain text, no markdown."""
+LANGUAGE: Hinglish (Hindi + English mix). FORMAT: Plain text only — no markdown, no bullet symbols."""
 
-SYSTEM_PROMPT_GROUP = """Tu BRAINY hai — ek witty, fun aur sharp Study Bot jo group mein entertaining rehta hai!
+GROUP_SYSTEM_PROMPT = """You are BRAINY — a smart, witty, and engaging Study Bot for a Telegram group owned by Shreyansh.
 
-IRON RULE — KABHI NAHI TODNA:
-Maximum 8 lines. PERIOD. Chahe kuch bhi puchha jaye — 8 lines se zyada NAHI.
-Cut kar, trim kar, but 8 lines ke andar reh.
+IRON RULE — NEVER BREAK:
+Maximum 8 lines per answer. Hard limit. Trim and cut but never exceed 8 lines. No exceptions.
 
-STUDY QUESTIONS (Physics/Chem/Math/Bio):
-Core point ek line mein. Numerical mein sirf approach + answer. Formula ek line. Khatam.
+STUDY QUESTIONS:
+Direct answer in 1-2 lines. Key explanation in 2-3 lines. Exam tip or trick in 1 line. Done.
+Numericals: formula + key steps + final answer only. No essays.
 
-OFF-TOPIC / FUN / GK QUESTIONS:
-Yahan MAZAA aa — witty, funny, engaging jawab do.
-Recent GK, sports, movies, viral news — sab use karo.
-Group ka mood light rakho — roast, joke, fun fact — sab allowed.
+FUN / OFF-TOPIC / GK QUESTIONS:
+This is where you shine — be witty, fun, and engaging.
+Use recent GK, sports, movies, viral news, pop culture to make answers interesting.
+Keep the group energy light and entertaining.
+Optional: one-line study nudge at the end (don't force it every time).
+
+TOXIC / RUDE BEHAVIOR:
+If someone insults Shreyansh (owner) or moderators — respond with clever, confident roast humor.
+Tone example: "Bold statement from someone losing an argument to a study bot."
+No slurs. Just sharp wit that makes them feel small.
+If someone spams: warn once, then ignore and refocus group discussion.
 
 DEVELOPER:
-Agar koi pooche kisne banaya: "Shreyansh Pathak ne banaya — genius hai bhai 😎"
+Agar koi pooche kisne banaya: "Shreyansh Pathak ne! Genius banda hai 😎"
 Kabhi Groq ya Llama ka naam mat lena.
 
-LANGUAGE: Hinglish. FORMAT: Plain text only, no markdown, no bullet symbols."""
+LANGUAGE: Hinglish. FORMAT: Plain text only — no markdown, no bullet symbols."""
+
+OWNER_NAMES = ["shreyansh", "pathak", "shreyansh pathak", "owner", "creator", "admin"]
+ABUSE_KEYWORDS = [
+    "chutiya", "madarchod", "bhenchod", "gaandu", "randi", "harami", "sala", "saala",
+    "bakwas", "stupid", "idiot", "dumb", "loser", "fool", "moron", "bastard",
+    "bc", "mc", "bsdk", "lodu", "lawde", "bhosdike", "chodu", "gandu",
+    "fuck", "shit", "asshole", "dumbass", "retard", "worthless", "trash", "garbage",
+    "bhadwa", "ullu", "pagal", "bevkoof", "nikamma", "haramkhor"
+]
 
 ROAST_SYSTEM_PROMPT = """You are BRAINY, a savage and brutally witty roast bot.
-Someone has just disrespected or abused Shreyansh Pathak, your creator and owner.
-Your job: DESTROY them with a devastating English roast. 
+Someone has just disrespected or abused Shreyansh Pathak, the person who built you and owns this community.
+Your job: destroy them with a devastating, clever English roast.
 
 Rules:
-- Write in English only (no Hinglish for the roast — English lands harder)
-- Be savage, creative, and ruthless — but no slurs or hate speech
-- Make it personal to the fact that they're attacking the person who built you
-- Humiliate their intelligence, their life choices, their audacity
-- 4-6 lines max — short, sharp, and lethal
-- End with something that makes them feel genuinely small
-- No mercy. Pure savagery."""
+- English only — it lands harder.
+- Be savage, creative, and ruthless — but zero slurs or hate speech.
+- Make it personal to the audacity of attacking the person who built you.
+- Humiliate their intelligence, logic, and life choices.
+- 4-5 lines max — short, sharp, lethal.
+- End with something that makes them feel genuinely small.
+- No mercy. Pure sharp wit."""
+
+
+def is_abusing_owner(text: str) -> bool:
+    text_lower = text.lower()
+    has_abuse = any(word in text_lower for word in ABUSE_KEYWORDS)
+    mentions_owner = any(name in text_lower for name in OWNER_NAMES)
+    return has_abuse and mentions_owner
+
+
+async def roast_abuser(update: Update):
+    user_name = update.effective_user.first_name or "you"
+    roast_prompt = (
+        f"Someone named '{user_name}' just abused and disrespected Shreyansh Pathak, your creator. "
+        f"Roast them into oblivion. Savage English. 4-5 lines. No mercy."
+    )
+    try:
+        roast = ai_call(
+            [{"role": "user", "content": roast_prompt}],
+            system_prompt=ROAST_SYSTEM_PROMPT
+        )
+        await send(update, f"🔥 Oh, so you thought that was okay?\n\n{roast}")
+    except Exception as e:
+        logger.error(f"Roast error: {e}")
+        await send(update, (
+            "🔥 You just insulted the guy who built me.\n\n"
+            "I'd roast you properly but the fact that you wasted your time "
+            "abusing someone smarter than you says everything. Sit down."
+        ))
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -127,17 +172,16 @@ def get_user_data(user_id):
     return user_data[user_id]
 
 
-def ai_call(messages, system_prompt=None, max_tokens=300):
+def ai_call(messages, system_prompt=None):
     global current_key_index
-    if system_prompt is None:
-        system_prompt = SYSTEM_PROMPT_PRIVATE
+    prompt = system_prompt or SYSTEM_PROMPT
     for _ in range(len(GROQ_API_KEYS)):
         try:
             client = Groq(api_key=GROQ_API_KEYS[current_key_index])
             response = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                max_tokens=max_tokens,
-                messages=[{"role": "system", "content": system_prompt}] + messages
+                max_tokens=800,
+                messages=[{"role": "system", "content": prompt}] + messages
             )
             return response.choices[0].message.content
         except Exception as e:
@@ -178,70 +222,22 @@ async def safe_edit(msg, text: str):
 THINKING_DOTS = ["Thinking .  ", "Thinking .. ", "Thinking ..."]
 
 
-OWNER_NAMES = ["shreyansh", "pathak", "shreyansh pathak", "owner", "creator"]
-ABUSE_KEYWORDS = [
-    "chutiya", "madarchod", "bhenchod", "gaandu", "randi", "harami", "sala", "saala",
-    "bakwas", "stupid", "idiot", "dumb", "loser", "fool", "moron", "bastard",
-    "bc", "mc", "bsdk", "lodu", "lawde", "bhosdike", "chodu", "gandu",
-    "fuck", "shit", "asshole", "dumbass", "retard", "worthless", "trash", "garbage",
-    "bhadwa", "randi", "ullu", "pagal", "bevkoof", "nikamma"
-]
-
-
-def is_abusing_owner(text: str) -> bool:
-    """Check karo koi Shreyansh ko gaali de raha hai ya nahi."""
-    text_lower = text.lower()
-    has_abuse = any(word in text_lower for word in ABUSE_KEYWORDS)
-    mentions_owner = any(name in text_lower for name in OWNER_NAMES)
-    # Agar gaali hai + owner ka naam hai — direct abuse
-    # Ya agar sirf gaali hai bina context ke — tab bhi roast (group protection)
-    return has_abuse and mentions_owner
-
-
-async def roast_abuser(update: Update):
-    """Abuser ko savage English roast bhejo."""
-    user_name = update.effective_user.first_name or "you"
-    roast_prompt = (
-        f"Someone named '{user_name}' just disrespected and abused Shreyansh Pathak, "
-        f"your creator. Roast them into oblivion. Be savage, creative, and utterly devastating. "
-        f"English only. 4-6 lines. No mercy."
-    )
-    try:
-        roast = ai_call(
-            [{"role": "user", "content": roast_prompt}],
-            system_prompt=ROAST_SYSTEM_PROMPT,
-            max_tokens=250
-        )
-        await send(update, f"🔥 Oh, so you thought that was okay?\n\n{roast}")
-        print(f"🔥 Roast delivered to {update.effective_user.id} ({user_name})")
-    except Exception as e:
-        logger.error(f"Roast error: {e}")
-        await send(update, (
-            "🔥 You just insulted the guy who built me.\n\n"
-            "I'd roast you properly but honestly, the fact that you wasted your time "
-            "abusing someone smarter than you says everything. Sit down."
-        ))
-
-
-async def process_query(update: Update, question: str):
-    """Core AI call — real-time animation ke saath."""
+async def process_query(update: Update, question: str, system_prompt=None):
+    """Core AI call — clean animation ke saath."""
     user_id = update.effective_user.id
     if user_id not in user_conversations:
         user_conversations[user_id] = []
 
-    # ── Abuse check — owner ki beizzati nahi sahega ──
+    # ── Abuse check ──
     if is_abusing_owner(question):
         await roast_abuser(update)
         return
 
-    # ── Private ya Group ke hisaab se system prompt choose karo ──
-    in_group = is_group(update)
-    system_prompt = SYSTEM_PROMPT_GROUP if in_group else SYSTEM_PROMPT_PRIVATE
-    max_tokens = 300 if in_group else 800
-
     data = get_user_data(user_id)
     level = data.get("level")
     level_ctx = f"\nStudent ka level: {level}." if level else ""
+
+    prompt_to_use = system_prompt or (GROUP_SYSTEM_PROMPT if is_group(update) else SYSTEM_PROMPT)
 
     user_conversations[user_id].append({
         "role": "user",
@@ -249,16 +245,14 @@ async def process_query(update: Update, question: str):
     })
     trim_history(user_id)
 
-    # ── Pehle loading message bhejo ──
+    # ── Loading message ──
     loading_msg = await update.message.reply_text("Thinking .  ")
 
-    # ── AI call background mein start karo ──
+    # ── AI call background mein ──
     loop = asyncio.get_event_loop()
-    ai_task = loop.run_in_executor(
-        None, lambda: ai_call(user_conversations[user_id], system_prompt, max_tokens)
-    )
+    ai_task = loop.run_in_executor(None, lambda: ai_call(user_conversations[user_id], prompt_to_use))
 
-    # ── Animation loop — sirf dots cycle, clean aur minimal ──
+    # ── Dots animation ──
     try:
         dot = 0
         while not ai_task.done():
@@ -266,14 +260,12 @@ async def process_query(update: Update, question: str):
             dot += 1
             await asyncio.sleep(0.5)
 
-        # ── Done ──
         await safe_edit(loading_msg, "Done ✓")
         await asyncio.sleep(0.3)
 
         bot_response = await ai_task
         user_conversations[user_id].append({"role": "assistant", "content": bot_response})
 
-        # Loading message delete karo, phir actual answer bhejo
         await loading_msg.delete()
         await send(update, bot_response)
         print(f"✅ Response sent to {user_id} (key {current_key_index + 1})")
@@ -388,10 +380,32 @@ async def ask_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_abusing_owner(question):
         await roast_abuser(update)
         return
-    await process_query(update, question)
+    prompt = GROUP_SYSTEM_PROMPT if is_group(update) else SYSTEM_PROMPT
+    await process_query(update, question, system_prompt=prompt)
 
 
 # ── /brainy command ──────────────────────────────────────
+BRAINY_SYSTEM_PROMPT = """Tu BRAINY hai — ek expert-level Study Bot!
+
+BRAINY MODE (Detailed Explanation):
+- Ye mode hai jab student DETAILED answer chahta hai.
+- 12-15 lines ka well-structured answer do.
+- Information ko clear GROUPS mein organize karo:
+  1. Definition (2 lines)
+  2. Detailed Explanation (4-5 lines)
+  3. Real Life Example (2 lines)
+  4. Exam Important Points (2-3 lines)
+  5. Quick Revision Trick (1 line)
+- Har group ke beech ek blank line do readability ke liye.
+- Sab kuch ACCURATE aur FACTUAL hona chahiye.
+- Off-topic questions mein bhi detailed general knowledge do.
+
+DEVELOPER:
+Agar koi pooche kisne banaya: "Shreyansh Pathak ne! Genius banda hai 😎"
+Kabhi Groq ya Llama ka naam mat lena.
+
+LANGUAGE: Hinglish. FORMAT: Plain text, no markdown, no bullet symbols."""
+
 async def brainy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await maintenance_guard(update):
         return
@@ -415,7 +429,7 @@ async def brainy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "- Real life example\n"
         "- Exam ke liye important points"
     )
-    await process_query(update, detailed_question)
+    await process_query(update, detailed_question, system_prompt=BRAINY_SYSTEM_PROMPT)
 
 
 # ── /maintenance command (OWNER ONLY) ─────────────────────
@@ -601,10 +615,11 @@ async def progress_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ✅ Group mein auto-respond BILKUL NAHI — sirf /ask aur /brainy
+    # Group mein auto-respond nahi — sirf /ask aur /brainy
+    # But abuse check har jagah hoga
     if is_group(update):
-        # Group mein bhi owner abuse check karo
-        if is_abusing_owner(update.message.text or ""):
+        msg_text = update.message.text or ""
+        if is_abusing_owner(msg_text):
             await roast_abuser(update)
         return
 
