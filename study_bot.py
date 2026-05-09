@@ -257,7 +257,7 @@ def _call_gemini(messages, system_prompt, max_tokens):
                 "generationConfig": {"maxOutputTokens": max_tokens}
             }
             resp = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}",
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-8b:generateContent?key={key}",
                 json=payload, timeout=20
             )
             resp.raise_for_status()
@@ -441,7 +441,7 @@ def _analyze_gemini_vision(image_bytes: bytes, question: str) -> str:
         "generationConfig": {"maxOutputTokens": 600}
     }
     resp = requests.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}",
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-8b:generateContent?key={key}",
         json=payload, timeout=30
     )
     resp.raise_for_status()
