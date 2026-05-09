@@ -456,7 +456,7 @@ def _analyze_groq_vision(image_bytes: bytes, question: str) -> str:
     user_text = question if question else "Is image mein jo question, problem, ya concept hai usse solve ya explain karo."
     client = Groq(api_key=key)
     resp = client.chat.completions.create(
-        model="llama-3.2-11b-vision-preview",
+        model="meta-llama/llama-4-scout-17b-16e-instruct",
         max_tokens=600,
         messages=[
             {"role": "system", "content": IMAGE_SYSTEM_PROMPT},
