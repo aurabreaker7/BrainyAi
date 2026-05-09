@@ -19,7 +19,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
 # ── API Keys (add as many as you want) ───────────────────
-GROQ_API_KEYS    = [k for k in [os.getenv("GROQ_API_KEY_1"),    os.getenv("GROQ_API_KEY_2")]    if k]
+GROQ_API_KEYS    = [k for k in [os.getenv("GROQ_API_KEY_1"),    os.getenv("GROQ_API_KEY_2"),    os.getenv("GROQ_API_KEY_3")]    if k]
 NVIDIA_API_KEYS  = [k for k in [os.getenv("NVIDIA_API_KEY_1"),  os.getenv("NVIDIA_API_KEY_2")]  if k]
 DEEPSEEK_API_KEYS= [k for k in [os.getenv("DEEPSEEK_API_KEY_1"),os.getenv("DEEPSEEK_API_KEY_2")]if k]
 GEMINI_API_KEYS  = [k for k in [os.getenv("GEMINI_API_KEY_1"),  os.getenv("GEMINI_API_KEY_2")]  if k]
