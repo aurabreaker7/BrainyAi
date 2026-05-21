@@ -1319,7 +1319,7 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send(update, f"❌ Search mein error aaya: {str(e)[:100]}\n\n⏳ Thodi der baad phir try karo!")
 
 
-
+async def maintenance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global MAINTENANCE_MODE
     if not is_owner(update):
         await send(update, "🔒 Ye command sirf bot owner ke liye hai!")
@@ -1687,15 +1687,6 @@ def main():
     app.add_handler(CommandHandler("summarize",   summarize_command))
     app.add_handler(CommandHandler("search",      search_command))
     app.add_handler(level_handler)
-
-async def maintenance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global MAINTENANCE_MODE
-    if not is_owner(update):
-        await send(update, "❌ Yeh command sirf owner ke liye hai!")
-        return
-    MAINTENANCE_MODE = not MAINTENANCE_MODE
-    status = "🔴 ON" if MAINTENANCE_MODE else "🟢 OFF"
-    await send(update, f"🔧 Maintenance Mode: {status}")
 
     app.add_handler(MessageHandler(
         filters.PHOTO | filters.Document.IMAGE,
