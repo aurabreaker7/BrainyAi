@@ -21,17 +21,18 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
 # ── API Keys (add as many as you want) ───────────────────
-GROQ_API_KEYS    = [k for k in [os.getenv("GROQ_API_KEY_1"),    os.getenv("GROQ_API_KEY_2"),    os.getenv("GROQ_API_KEY_3")]    if k]
-NVIDIA_API_KEYS  = [k for k in [os.getenv("NVIDIA_API_KEY_1"),  os.getenv("NVIDIA_API_KEY_2")]  if k]
-DEEPSEEK_API_KEYS= [k for k in [os.getenv("DEEPSEEK_API_KEY_1"),os.getenv("DEEPSEEK_API_KEY_2")]if k]
-GEMINI_API_KEYS  = [k for k in [os.getenv("GEMINI_API_KEY_1"),  os.getenv("GEMINI_API_KEY_2")]  if k]
-TAVILY_API_KEYS  = [k for k in [os.getenv("TAVILY_API_KEY_1"),  os.getenv("TAVILY_API_KEY_2")]  if k]
+GROQ_API_KEYS      = [k for k in [os.getenv("GROQ_API_KEY_1"),      os.getenv("GROQ_API_KEY_2"),      os.getenv("GROQ_API_KEY_3")]      if k]
+NVIDIA_API_KEYS    = [k for k in [os.getenv("NVIDIA_API_KEY_1"),    os.getenv("NVIDIA_API_KEY_2")]    if k]
+DEEPSEEK_API_KEYS  = [k for k in [os.getenv("DEEPSEEK_API_KEY_1"),  os.getenv("DEEPSEEK_API_KEY_2")]  if k]
+GEMINI_API_KEYS    = [k for k in [os.getenv("GEMINI_API_KEY_1"),    os.getenv("GEMINI_API_KEY_2")]    if k]
+TAVILY_API_KEYS    = [k for k in [os.getenv("TAVILY_API_KEY_1"),    os.getenv("TAVILY_API_KEY_2")]    if k]
+CEREBRAS_API_KEYS  = [k for k in [os.getenv("CEREBRAS_API_KEY_1"),  os.getenv("CEREBRAS_API_KEY_2")]  if k]
 
 if not TELEGRAM_TOKEN or not GROQ_API_KEYS:
     print("ERROR: The bot server must be down try contacting dev for fix:- @shreyanshhh_08")
     exit()
 
-print(f"Groq keys: {len(GROQ_API_KEYS)} | Nvidia: {len(NVIDIA_API_KEYS)} | Deepseek: {len(DEEPSEEK_API_KEYS)} | Gemini: {len(GEMINI_API_KEYS)} | Tavily: {len(TAVILY_API_KEYS)}")
+print(f"Groq: {len(GROQ_API_KEYS)} | Nvidia: {len(NVIDIA_API_KEYS)} | Deepseek: {len(DEEPSEEK_API_KEYS)} | Gemini: {len(GEMINI_API_KEYS)} | Tavily: {len(TAVILY_API_KEYS)} | Cerebras: {len(CEREBRAS_API_KEYS)}")
 if OWNER_ID: print(f"Owner ID: {OWNER_ID}")
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -89,34 +90,45 @@ import re
 
 def clean_response(text: str) -> str:
     """
-    Convert AI markdown **bold** and *italic* into clean Unicode equivalents.
-    Removes raw asterisks so they don't appear as **word** in Telegram.
+    Convert AI markdown **bold** and *italic* → Unicode fonts.
+    Handles multiline bold, nested patterns, and stray asterisks.
     """
-    # Convert **bold text** → Unicode bold
+    if not text:
+        return text
+
     def replace_bold(m):
-        return bold(m.group(1))
+        inner = m.group(1).strip()
+        return bold(inner) if inner else ""
 
-    # Convert *italic text* → Unicode italic (single asterisk, not double)
     def replace_italic(m):
-        return italic(m.group(1))
+        inner = m.group(1).strip()
+        return italic(inner) if inner else ""
 
-    # Handle **bold** first (greedy double asterisk)
+    # Step 1: **bold** → Unicode bold (non-greedy, handles multiline)
     text = re.sub(r'\*\*(.+?)\*\*', replace_bold, text, flags=re.DOTALL)
 
-    # Handle *italic* (single asterisk, won't clash now since ** already handled)
-    text = re.sub(r'\*([^\*\n]+?)\*', replace_italic, text)
-
-    # Handle __underline__ (Telegram doesn't render underline well → use bold)
+    # Step 2: __bold__ → Unicode bold
     text = re.sub(r'__(.+?)__', replace_bold, text, flags=re.DOTALL)
 
-    # Handle _italic_ (underscore style)
-    text = re.sub(r'_([^_\n]+?)_', replace_italic, text)
+    # Step 3: *italic* → Unicode italic (single asterisk only, not at line start bullets)
+    text = re.sub(r'(?<!\*)\*(?!\*)([^\*\n]+?)(?<!\*)\*(?!\*)', replace_italic, text)
 
-    # Strip leftover lone asterisks that aren't part of bullet points
-    # Keep * at start of line (bullet points) but remove stray inline *
-    text = re.sub(r'(?<!\n)\*(?!\s)', '', text)
+    # Step 4: _italic_ → Unicode italic
+    text = re.sub(r'(?<!_)_(?!_)([^_\n]+?)(?<!_)_(?!_)', replace_italic, text)
 
-    return text
+    # Step 5: Remove # headings (keep the text after #)
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+
+    # Step 6: Remove remaining stray ** or * that weren't converted
+    # But KEEP "* " at start of line (bullet points)
+    text = re.sub(r'\*\*', '', text)                          # remove leftover **
+    text = re.sub(r'(?<!\n)\*(?=[^\s\n])', '', text)         # remove * mid-word only
+    text = re.sub(r'(?<=[^\s\n])\*(?!\s|\n|$)', '', text)    # remove * after word only
+
+    # Step 7: Clean up excessive blank lines
+    text = re.sub(r'\n{3,}', '\n\n', text)
+
+    return text.strip()
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #   WEB SEARCH ENGINE — DuckDuckGo (no API key needed)
@@ -273,7 +285,7 @@ MAX_ASK_HISTORY         = 10   # ask: 10 messages (5 exchanges)
 MAX_INTERACTION_LOG     = 100  # Keep last 100 saved interactions for learning
 CHOOSING_LEVEL          = 1
 
-key_idx = {"groq": 0, "nvidia": 0, "deepseek": 0, "gemini": 0}
+key_idx = {"groq": 0, "nvidia": 0, "deepseek": 0, "gemini": 0, "cerebras": 0}
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -599,6 +611,12 @@ def _call_groq(messages, system_prompt, max_tokens):
 def _call_gemini(messages, system_prompt, max_tokens):
     if not GEMINI_API_KEYS:
         raise Exception("NO_KEYS: gemini")
+    # Try multiple model names in case one is deprecated/unavailable
+    GEMINI_MODELS = [
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-latest",
+    ]
     for _ in range(len(GEMINI_API_KEYS)):
         try:
             key = _rotate_key("gemini", GEMINI_API_KEYS)
@@ -611,18 +629,34 @@ def _call_gemini(messages, system_prompt, max_tokens):
                 "contents": contents,
                 "generationConfig": {"maxOutputTokens": max_tokens}
             }
-            resp = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}",
-                json=payload, timeout=20
-            )
-            resp.raise_for_status()
-            return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+            last_gemini_err = None
+            for model in GEMINI_MODELS:
+                try:
+                    resp = requests.post(
+                        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}",
+                        json=payload, timeout=20
+                    )
+                    resp.raise_for_status()
+                    return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+                except Exception as me:
+                    if "404" in str(me) or "not found" in str(me).lower():
+                        print(f"Gemini model {model} not found, trying next model...")
+                        last_gemini_err = me
+                        continue
+                    raise
+            if last_gemini_err:
+                raise last_gemini_err
         except Exception as e:
+            err_str = str(e).lower()
             if _is_rate_err(e):
-                print(f"Gemini key exhausted, rotating...")
+                print(f"Gemini key rate limited, rotating...")
+                continue
+            # Invalid/expired key — skip this key
+            if any(c in str(e) for c in ["401", "403", "API_KEY", "invalid"]):
+                print(f"Gemini key invalid/expired, rotating...")
                 continue
             raise
-    raise Exception("All Gemini keys exhausted")
+    raise Exception("NO_KEYS: gemini")
 
 def _call_deepseek(messages, system_prompt, max_tokens):
     if not DEEPSEEK_API_KEYS:
@@ -643,11 +677,16 @@ def _call_deepseek(messages, system_prompt, max_tokens):
             resp.raise_for_status()
             return resp.json()["choices"][0]["message"]["content"]
         except Exception as e:
-            if _is_rate_err(e):
-                print(f"Deepseek key exhausted, rotating...")
+            err_str = str(e).lower()
+            # Skip on rate limit OR quota/billing/balance errors
+            SKIP_ERRS = ["rate limit", "quota", "exceeded", "429", "402",
+                         "insufficient", "balance", "credit", "payment"]
+            if any(w in err_str for w in SKIP_ERRS):
+                print(f"Deepseek key skipped (quota/balance), trying next provider...")
                 continue
             raise
-    raise Exception("All Deepseek keys exhausted")
+    # All keys exhausted/out of balance — skip to next provider
+    raise Exception("NO_KEYS: deepseek")
 
 def _call_nvidia(messages, system_prompt, max_tokens):
     if not NVIDIA_API_KEYS:
@@ -673,6 +712,31 @@ def _call_nvidia(messages, system_prompt, max_tokens):
                 continue
             raise
     raise Exception("All Nvidia keys exhausted")
+
+def _call_cerebras(messages, system_prompt, max_tokens):
+    if not CEREBRAS_API_KEYS:
+        raise Exception("NO_KEYS: cerebras")
+    for _ in range(len(CEREBRAS_API_KEYS)):
+        try:
+            key = _rotate_key("cerebras", CEREBRAS_API_KEYS)
+            payload = {
+                "model": "llama-3.3-70b",
+                "max_tokens": max_tokens,
+                "messages": [{"role": "system", "content": system_prompt}] + messages
+            }
+            resp = requests.post(
+                "https://api.cerebras.ai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json=payload, timeout=20
+            )
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            if _is_rate_err(e):
+                print(f"Cerebras key exhausted, rotating...")
+                continue
+            raise
+    raise Exception("All Cerebras keys exhausted")
 
 # ── Smart provider routing ────────────────────────────────
 
@@ -712,13 +776,41 @@ def detect_question_type(messages) -> str:
     return "simple"
 
 def get_provider_chain(question_type: str, system_prompt: str) -> list:
+    # Numerical/brainy → DeepSeek best for math, then Cerebras (fast), Gemini, Groq
     if system_prompt == BRAINY_SYSTEM_PROMPT or question_type == "numerical":
-        return [("Deepseek", _call_deepseek), ("Gemini", _call_gemini), ("Groq", _call_groq), ("Nvidia", _call_nvidia)]
+        return [
+            ("Deepseek",  _call_deepseek),
+            ("Cerebras",  _call_cerebras),
+            ("Gemini",    _call_gemini),
+            ("Groq",      _call_groq),
+            ("Nvidia",    _call_nvidia),
+        ]
+    # Creative → Groq (creative model), Cerebras (fast), Nvidia, Gemini
     if question_type == "creative":
-        return [("Groq", _call_groq), ("Nvidia", _call_nvidia), ("Gemini", _call_gemini), ("Deepseek", _call_deepseek)]
+        return [
+            ("Groq",      _call_groq),
+            ("Cerebras",  _call_cerebras),
+            ("Nvidia",    _call_nvidia),
+            ("Gemini",    _call_gemini),
+            ("Deepseek",  _call_deepseek),
+        ]
+    # GK → Gemini (world knowledge), Cerebras (fast), Groq, Deepseek
     if question_type == "gk":
-        return [("Gemini", _call_gemini), ("Groq", _call_groq), ("Deepseek", _call_deepseek), ("Nvidia", _call_nvidia)]
-    return [("Groq", _call_groq), ("Gemini", _call_gemini), ("Deepseek", _call_deepseek), ("Nvidia", _call_nvidia)]
+        return [
+            ("Gemini",    _call_gemini),
+            ("Cerebras",  _call_cerebras),
+            ("Groq",      _call_groq),
+            ("Deepseek",  _call_deepseek),
+            ("Nvidia",    _call_nvidia),
+        ]
+    # Default/simple → Cerebras first (fastest), then Groq, Gemini, Deepseek
+    return [
+        ("Cerebras",  _call_cerebras),
+        ("Groq",      _call_groq),
+        ("Gemini",    _call_gemini),
+        ("Deepseek",  _call_deepseek),
+        ("Nvidia",    _call_nvidia),
+    ]
 
 def ai_call(messages, system_prompt=None, max_tokens=300):
     prompt = system_prompt or SYSTEM_PROMPT
@@ -745,6 +837,11 @@ def ai_call(messages, system_prompt=None, max_tokens=300):
 def _analyze_gemini_vision(image_bytes: bytes, question: str) -> str:
     if not GEMINI_API_KEYS:
         raise Exception("NO_KEYS: gemini_vision")
+    VISION_MODELS = [
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-latest",
+    ]
     key = _rotate_key("gemini", GEMINI_API_KEYS)
     img_b64 = base64.b64encode(image_bytes).decode("utf-8")
     user_text = question if question else "Is image mein jo question, problem, ya concept hai usse solve ya explain karo."
@@ -756,12 +853,22 @@ def _analyze_gemini_vision(image_bytes: bytes, question: str) -> str:
         ]}],
         "generationConfig": {"maxOutputTokens": 600}
     }
-    resp = requests.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}",
-        json=payload, timeout=30
-    )
-    resp.raise_for_status()
-    return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+    last_err = None
+    for model in VISION_MODELS:
+        try:
+            resp = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}",
+                json=payload, timeout=30
+            )
+            resp.raise_for_status()
+            return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception as e:
+            if "404" in str(e) or "not found" in str(e).lower():
+                print(f"Gemini vision model {model} not found, trying next...")
+                last_err = e
+                continue
+            raise
+    raise last_err or Exception("All Gemini vision models failed")
 
 def _analyze_groq_vision(image_bytes: bytes, question: str) -> str:
     if not GROQ_API_KEYS:
@@ -784,12 +891,21 @@ def _analyze_groq_vision(image_bytes: bytes, question: str) -> str:
     return resp.choices[0].message.content
 
 def analyze_image(image_bytes: bytes, question: str = "") -> str:
-    try:
-        return _analyze_gemini_vision(image_bytes, question)
-    except Exception as e:
-        if "NO_KEYS:" not in str(e):
-            print(f"Gemini vision failed: {str(e)[:60]}, trying Groq vision...")
-        return _analyze_groq_vision(image_bytes, question)
+    """Try Gemini vision first, fall back to Groq vision silently."""
+    if GEMINI_API_KEYS:
+        try:
+            result = _analyze_gemini_vision(image_bytes, question)
+            return result
+        except Exception as e:
+            err = str(e)
+            # 404 = model not found, 401/403 = key invalid — all silent fallback
+            if any(code in err for code in ["404", "401", "403", "NO_KEYS"]):
+                print(f"Gemini vision unavailable, using Groq vision...")
+            else:
+                print(f"Gemini vision error: {err[:60]}, trying Groq vision...")
+    else:
+        print("No Gemini keys, using Groq vision directly...")
+    return _analyze_groq_vision(image_bytes, question)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #   HELPER FUNCTIONS
@@ -1688,10 +1804,9 @@ async def post_init(application: Application) -> None:
 
 def main():
     print("=" * 55)
-    print("  ⚡ BRAINY Study Bot v5.0 Starting...  ")
-    print("  🧠 Multi-provider AI + Image Analysis  ")
-    print("  🔍 Tavily Search | Gemini 2.0 Flash    ")
-    print("  🔤 Unicode Mono Font | Bold/Italic Fix  ")
+    print("  ⚡ BRAINY Study Bot v5.1 Starting...  ")
+    print("  🧠 Cerebras + Groq + Gemini + DeepSeek ")
+    print("  🔍 Tavily Search | Bold Fix | Fallbacks ")
     print("=" * 55)
 
     app = (
