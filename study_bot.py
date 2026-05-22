@@ -611,12 +611,12 @@ def _call_groq(messages, system_prompt, max_tokens):
 def _call_gemini(messages, system_prompt, max_tokens):
     if not GEMINI_API_KEYS:
         raise Exception("NO_KEYS: gemini")
-    # Try multiple model names in case one is deprecated/unavailable
     GEMINI_MODELS = [
         "gemini-2.0-flash",
         "gemini-1.5-flash",
         "gemini-1.5-flash-latest",
     ]
+    rate_limited_count = 0
     for _ in range(len(GEMINI_API_KEYS)):
         try:
             key = _rotate_key("gemini", GEMINI_API_KEYS)
@@ -647,15 +647,16 @@ def _call_gemini(messages, system_prompt, max_tokens):
             if last_gemini_err:
                 raise last_gemini_err
         except Exception as e:
-            err_str = str(e).lower()
             if _is_rate_err(e):
-                print(f"Gemini key rate limited, rotating...")
+                rate_limited_count += 1
+                print(f"Gemini key {rate_limited_count} rate limited, rotating...")
                 continue
-            # Invalid/expired key — skip this key
             if any(c in str(e) for c in ["401", "403", "API_KEY", "invalid"]):
-                print(f"Gemini key invalid/expired, rotating...")
+                print(f"Gemini key invalid/expired, skipping...")
                 continue
             raise
+    # All keys rate limited or invalid — skip to next provider immediately
+    print(f"All Gemini keys exhausted, moving to next provider...")
     raise Exception("NO_KEYS: gemini")
 
 def _call_deepseek(messages, system_prompt, max_tokens):
@@ -716,27 +717,47 @@ def _call_nvidia(messages, system_prompt, max_tokens):
 def _call_cerebras(messages, system_prompt, max_tokens):
     if not CEREBRAS_API_KEYS:
         raise Exception("NO_KEYS: cerebras")
+    # Cerebras available models (try in order)
+    CEREBRAS_MODELS = [
+        "llama-3.3-70b",
+        "llama3.3-70b",
+        "llama-3.1-70b",
+        "llama3.1-70b",
+    ]
     for _ in range(len(CEREBRAS_API_KEYS)):
         try:
             key = _rotate_key("cerebras", CEREBRAS_API_KEYS)
-            payload = {
-                "model": "llama-3.3-70b",
-                "max_tokens": max_tokens,
-                "messages": [{"role": "system", "content": system_prompt}] + messages
-            }
-            resp = requests.post(
-                "https://api.cerebras.ai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json=payload, timeout=20
-            )
-            resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"]
+            last_err = None
+            for model in CEREBRAS_MODELS:
+                try:
+                    payload = {
+                        "model": model,
+                        "max_tokens": min(max_tokens, 2048),  # Cerebras max safe limit
+                        "messages": [{"role": "system", "content": system_prompt}] + messages
+                    }
+                    resp = requests.post(
+                        "https://api.cerebras.ai/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                        json=payload, timeout=20
+                    )
+                    resp.raise_for_status()
+                    print(f"Cerebras model used: {model}")
+                    return resp.json()["choices"][0]["message"]["content"]
+                except Exception as me:
+                    if "404" in str(me) or "not found" in str(me).lower() or "model" in str(me).lower():
+                        print(f"Cerebras model {model} not found, trying next...")
+                        last_err = me
+                        continue
+                    raise me
+            if last_err:
+                raise last_err
         except Exception as e:
             if _is_rate_err(e):
                 print(f"Cerebras key exhausted, rotating...")
                 continue
-            raise
-    raise Exception("All Cerebras keys exhausted")
+            if "404" not in str(e) and "model" not in str(e).lower():
+                raise
+    raise Exception("NO_KEYS: cerebras")
 
 # ── Smart provider routing ────────────────────────────────
 
