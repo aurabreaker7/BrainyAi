@@ -27,12 +27,13 @@ DEEPSEEK_API_KEYS  = [k for k in [os.getenv("DEEPSEEK_API_KEY_1"),  os.getenv("D
 GEMINI_API_KEYS    = [k for k in [os.getenv("GEMINI_API_KEY_1"),    os.getenv("GEMINI_API_KEY_2")]    if k]
 TAVILY_API_KEYS    = [k for k in [os.getenv("TAVILY_API_KEY_1"),    os.getenv("TAVILY_API_KEY_2")]    if k]
 CEREBRAS_API_KEYS  = [k for k in [os.getenv("CEREBRAS_API_KEY_1"),  os.getenv("CEREBRAS_API_KEY_2")]  if k]
+OPENROUTER_API_KEYS = [k for k in [os.getenv("OPENROUTER_API_KEY_1"), os.getenv("OPENROUTER_API_KEY_2")] if k]
 
 if not TELEGRAM_TOKEN or not GROQ_API_KEYS:
     print("ERROR: The bot server must be down try contacting dev for fix:- @shreyanshhh_08")
     exit()
 
-print(f"Groq: {len(GROQ_API_KEYS)} | Nvidia: {len(NVIDIA_API_KEYS)} | Deepseek: {len(DEEPSEEK_API_KEYS)} | Gemini: {len(GEMINI_API_KEYS)} | Tavily: {len(TAVILY_API_KEYS)} | Cerebras: {len(CEREBRAS_API_KEYS)}")
+print(f"Groq: {len(GROQ_API_KEYS)} | Nvidia: {len(NVIDIA_API_KEYS)} | Deepseek: {len(DEEPSEEK_API_KEYS)} | Gemini: {len(GEMINI_API_KEYS)} | Tavily: {len(TAVILY_API_KEYS)} | Cerebras: {len(CEREBRAS_API_KEYS)} | OpenRouter: {len(OPENROUTER_API_KEYS)}")
 if OWNER_ID: print(f"Owner ID: {OWNER_ID}")
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -116,8 +117,11 @@ def clean_response(text: str) -> str:
     # Step 4: _italic_ → Unicode italic
     text = re.sub(r'(?<!_)_(?!_)([^_\n]+?)(?<!_)_(?!_)', replace_italic, text)
 
-    # Step 5: Remove # headings (keep the text after #)
-    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    # Step 5: # headings → Unicode bold (so headings actually look bold, not plain text)
+    def replace_heading(m):
+        inner = m.group(2).strip()
+        return bold(inner) if inner else ""
+    text = re.sub(r'^(#{1,6})\s+(.+)$', replace_heading, text, flags=re.MULTILINE)
 
     # Step 6: Remove remaining stray ** or * that weren't converted
     # But KEEP "* " at start of line (bullet points)
@@ -285,7 +289,7 @@ MAX_ASK_HISTORY         = 10   # ask: 10 messages (5 exchanges)
 MAX_INTERACTION_LOG     = 100  # Keep last 100 saved interactions for learning
 CHOOSING_LEVEL          = 1
 
-key_idx = {"groq": 0, "nvidia": 0, "deepseek": 0, "gemini": 0, "cerebras": 0}
+key_idx = {"groq": 0, "nvidia": 0, "deepseek": 0, "gemini": 0, "cerebras": 0, "openrouter": 0}
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -328,14 +332,15 @@ GK & Current Affairs: History, Geography, Economy, Science discoveries, World ev
 🤖 AI KNOWLEDGE (Share when asked!)
 ━━━━━━━━━━━━━━━━━━━━━━━━
 You know about modern AI models and can explain them:
-→ GPT-4o: OpenAI ka multimodal model — text, image, audio sab handle karta hai
-→ Claude 3.5/3.7 Sonnet: Anthropic ka model — coding aur reasoning mein top
-→ Gemini 2.0 Flash: Google ka latest fast model — multimodal, free tier pe available
-→ Llama 3.3 70B: Meta ka open-source powerhouse — free mein use hota hai
-→ DeepSeek V3/R1: China ka model — maths aur science mein exceptional, reasoning mein R1 best
+→ GPT-5.5: OpenAI ka latest flagship — strong reasoning, multimodal, agentic tasks
+→ Claude Opus 4.8 / Sonnet 4.6: Anthropic ke models — coding aur reasoning mein top-tier, Sonnet fast version hai
+→ Gemini 3 / 3.1: Google ka latest family — Flash variants free tier mein available, Pro paid hai
+→ Llama 4 (Scout/Maverick): Meta ka open-source powerhouse — multimodal, free mein use hota hai
+→ DeepSeek V4 (Flash/Pro): China ka model — maths/science mein exceptional, sabse cheap frontier-class API
+→ Grok 4/5: xAI (Elon Musk) ka model — real-time X data access, strong reasoning
+→ Qwen3: Alibaba ka open-source family — coding aur multilingual mein strong
 → Mistral: European AI — lightweight, fast, open-source
-→ Grok 3: xAI (Elon Musk) ka latest model — real-time web access, reasoning
-→ Phi-4: Microsoft ka small but smart model — runs locally bhi
+Naye models almost har mahine aate hain — agar koi bohot naya naam le toh "mujhe iske baare mein exact detail nahi pata, recent release lagta hai" bol dena, galat info mat dena.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 🔥 PERSONALITY
@@ -612,9 +617,9 @@ def _call_gemini(messages, system_prompt, max_tokens):
     if not GEMINI_API_KEYS:
         raise Exception("NO_KEYS: gemini")
     GEMINI_MODELS = [
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-latest",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-3-flash-preview",
     ]
     rate_limited_count = 0
     for _ in range(len(GEMINI_API_KEYS)):
@@ -662,30 +667,38 @@ def _call_gemini(messages, system_prompt, max_tokens):
 def _call_deepseek(messages, system_prompt, max_tokens):
     if not DEEPSEEK_API_KEYS:
         raise Exception("NO_KEYS: deepseek")
+    DEEPSEEK_MODELS = ["deepseek-chat", "deepseek-v4-flash"]  # alias retires 2026-07-24, v4-flash is the direct replacement
     for _ in range(len(DEEPSEEK_API_KEYS)):
-        try:
-            key = _rotate_key("deepseek", DEEPSEEK_API_KEYS)
-            payload = {
-                "model": "deepseek-chat",
-                "max_tokens": max_tokens,
-                "messages": [{"role": "system", "content": system_prompt}] + messages
-            }
-            resp = requests.post(
-                "https://api.deepseek.com/chat/completions",
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json=payload, timeout=25
-            )
-            resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"]
-        except Exception as e:
-            err_str = str(e).lower()
-            # Skip on rate limit OR quota/billing/balance errors
-            SKIP_ERRS = ["rate limit", "quota", "exceeded", "429", "402",
-                         "insufficient", "balance", "credit", "payment"]
-            if any(w in err_str for w in SKIP_ERRS):
-                print(f"Deepseek key skipped (quota/balance), trying next provider...")
-                continue
-            raise
+        key = _rotate_key("deepseek", DEEPSEEK_API_KEYS)
+        last_err = None
+        for model in DEEPSEEK_MODELS:
+            try:
+                payload = {
+                    "model": model,
+                    "max_tokens": max_tokens,
+                    "messages": [{"role": "system", "content": system_prompt}] + messages
+                }
+                resp = requests.post(
+                    "https://api.deepseek.com/chat/completions",
+                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                    json=payload, timeout=25
+                )
+                resp.raise_for_status()
+                return resp.json()["choices"][0]["message"]["content"]
+            except Exception as e:
+                err_str = str(e).lower()
+                if "404" in err_str or "model" in err_str and "not" in err_str:
+                    last_err = e
+                    continue  # try next model name on this same key
+                SKIP_ERRS = ["rate limit", "quota", "exceeded", "429", "402",
+                             "insufficient", "balance", "credit", "payment"]
+                if any(w in err_str for w in SKIP_ERRS):
+                    print(f"Deepseek key has no balance (top up at platform.deepseek.com) — skipping to next provider...")
+                    raise Exception("NO_KEYS: deepseek")
+                last_err = e
+                break
+        if last_err:
+            continue
     # All keys exhausted/out of balance — skip to next provider
     raise Exception("NO_KEYS: deepseek")
 
@@ -759,7 +772,54 @@ def _call_cerebras(messages, system_prompt, max_tokens):
                 raise
     raise Exception("NO_KEYS: cerebras")
 
-# ── Smart provider routing ────────────────────────────────
+def _call_openrouter(messages, system_prompt, max_tokens):
+    if not OPENROUTER_API_KEYS:
+        raise Exception("NO_KEYS: openrouter")
+    # Free models on OpenRouter (":free" suffix = zero cost, ~20 RPM / shared daily cap)
+    OPENROUTER_MODELS = [
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "deepseek/deepseek-chat-v3.1:free",
+        "google/gemma-3-27b-it:free",
+        "qwen/qwen3-235b-a22b:free",
+    ]
+    for _ in range(len(OPENROUTER_API_KEYS)):
+        key = _rotate_key("openrouter", OPENROUTER_API_KEYS)
+        last_err = None
+        for model in OPENROUTER_MODELS:
+            try:
+                payload = {
+                    "model": model,
+                    "max_tokens": max_tokens,
+                    "messages": [{"role": "system", "content": system_prompt}] + messages
+                }
+                resp = requests.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {key}",
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": "https://t.me/aurabreaker7",
+                        "X-Title": "BRAINY Study Bot"
+                    },
+                    json=payload, timeout=25
+                )
+                resp.raise_for_status()
+                return resp.json()["choices"][0]["message"]["content"]
+            except Exception as e:
+                err_str = str(e).lower()
+                if "404" in err_str or "no longer" in err_str or "not found" in err_str:
+                    print(f"OpenRouter model {model} unavailable, trying next free model...")
+                    last_err = e
+                    continue
+                if _is_rate_err(e):
+                    last_err = e
+                    continue
+                last_err = e
+                break
+        if last_err and _is_rate_err(last_err):
+            continue
+    raise Exception("NO_KEYS: openrouter")
+
+
 
 NUMERICAL_KEYWORDS = [
     "solve", "calculate", "find", "prove", "derive", "numerical",
@@ -800,37 +860,41 @@ def get_provider_chain(question_type: str, system_prompt: str) -> list:
     # Numerical/brainy → DeepSeek best for math, then Cerebras (fast), Gemini, Groq
     if system_prompt == BRAINY_SYSTEM_PROMPT or question_type == "numerical":
         return [
-            ("Deepseek",  _call_deepseek),
-            ("Cerebras",  _call_cerebras),
-            ("Gemini",    _call_gemini),
-            ("Groq",      _call_groq),
-            ("Nvidia",    _call_nvidia),
+            ("Deepseek",    _call_deepseek),
+            ("Cerebras",    _call_cerebras),
+            ("Gemini",      _call_gemini),
+            ("Groq",        _call_groq),
+            ("OpenRouter",  _call_openrouter),
+            ("Nvidia",      _call_nvidia),
         ]
     # Creative → Groq (creative model), Cerebras (fast), Nvidia, Gemini
     if question_type == "creative":
         return [
-            ("Groq",      _call_groq),
-            ("Cerebras",  _call_cerebras),
-            ("Nvidia",    _call_nvidia),
-            ("Gemini",    _call_gemini),
-            ("Deepseek",  _call_deepseek),
+            ("Groq",        _call_groq),
+            ("Cerebras",    _call_cerebras),
+            ("Nvidia",      _call_nvidia),
+            ("Gemini",      _call_gemini),
+            ("OpenRouter",  _call_openrouter),
+            ("Deepseek",    _call_deepseek),
         ]
     # GK → Gemini (world knowledge), Cerebras (fast), Groq, Deepseek
     if question_type == "gk":
         return [
-            ("Gemini",    _call_gemini),
-            ("Cerebras",  _call_cerebras),
-            ("Groq",      _call_groq),
-            ("Deepseek",  _call_deepseek),
-            ("Nvidia",    _call_nvidia),
+            ("Gemini",      _call_gemini),
+            ("Cerebras",    _call_cerebras),
+            ("Groq",        _call_groq),
+            ("Deepseek",    _call_deepseek),
+            ("OpenRouter",  _call_openrouter),
+            ("Nvidia",      _call_nvidia),
         ]
     # Default/simple → Cerebras first (fastest), then Groq, Gemini, Deepseek
     return [
-        ("Cerebras",  _call_cerebras),
-        ("Groq",      _call_groq),
-        ("Gemini",    _call_gemini),
-        ("Deepseek",  _call_deepseek),
-        ("Nvidia",    _call_nvidia),
+        ("Cerebras",    _call_cerebras),
+        ("Groq",        _call_groq),
+        ("Gemini",      _call_gemini),
+        ("Deepseek",    _call_deepseek),
+        ("OpenRouter",  _call_openrouter),
+        ("Nvidia",      _call_nvidia),
     ]
 
 def ai_call(messages, system_prompt=None, max_tokens=300):
@@ -859,9 +923,9 @@ def _analyze_gemini_vision(image_bytes: bytes, question: str) -> str:
     if not GEMINI_API_KEYS:
         raise Exception("NO_KEYS: gemini_vision")
     VISION_MODELS = [
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-latest",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-3-flash-preview",
     ]
     key = _rotate_key("gemini", GEMINI_API_KEYS)
     img_b64 = base64.b64encode(image_bytes).decode("utf-8")
@@ -1028,6 +1092,7 @@ async def roast_abuser(update: Update):
     )
     try:
         roast = ai_call([{"role": "user", "content": prompt}], ROAST_SYSTEM_PROMPT, 200)
+        roast = clean_response(roast)
         await send(update, f"🔥 Oh, so you thought that was okay?\n\n{roast}")
     except Exception as e:
         logger.error(f"Roast error: {e}")
@@ -1177,6 +1242,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             dot += 1
             await asyncio.sleep(0.5)
         result = await ai_task
+        result = clean_response(result)
         await loading_msg.delete()
         await send(update, f"📷 𝗜𝗺𝗮𝗴𝗲 𝗔𝗻𝗮𝗹𝘆𝘀𝗶𝘀:\n\n{result}")
         print(f"Image analyzed for {update.effective_user.id}")
@@ -1358,6 +1424,7 @@ async def roast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             dot += 1
             await asyncio.sleep(0.4)
         roast_text = await ai_task
+        roast_text = clean_response(roast_text)
         await loading_msg.delete()
         await send(update, f"🔥 𝗕𝗥𝗔𝗜𝗡𝗬 𝗥𝗢𝗔𝗦𝗧𝗦 {target_name.upper()}\n\n{roast_text}")
         print(f"Roast delivered for: {target_name}")
@@ -1374,6 +1441,7 @@ async def tip_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = "Give one powerful study or productivity tip for a JEE/NEET/CET student. Make it practical and actionable."
     try:
         tip = ai_call([{"role": "user", "content": prompt}], TIP_SYSTEM_PROMPT, 250)
+        tip = clean_response(tip)
         await send(update, f"💡 𝗧𝗶𝗽 𝗼𝗳 𝘁𝗵𝗲 𝗗𝗮𝘆:\n\n{tip}")
     except Exception as e:
         logger.error(f"Tip error: {e}")
@@ -1389,6 +1457,7 @@ async def fact_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = f"Give one mind-blowing lesser-known fact about {category}."
     try:
         fact = ai_call([{"role": "user", "content": prompt}], FACT_SYSTEM_PROMPT, 200)
+        fact = clean_response(fact)
         await send(update, f"🤯 𝗠𝗶𝗻𝗱-𝗕𝗹𝗼𝘄𝗶𝗻𝗴 𝗙𝗮𝗰𝘁:\n\n{fact}")
     except Exception as e:
         logger.error(f"Fact error: {e}")
@@ -1402,6 +1471,7 @@ async def joke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = "Tell one genuinely funny joke — preferably a science, programming, or Hinglish wordplay joke."
     try:
         joke = ai_call([{"role": "user", "content": prompt}], JOKE_SYSTEM_PROMPT, 150)
+        joke = clean_response(joke)
         await send(update, f"😂 𝗝𝗼𝗸𝗲 𝗦𝘂𝗻𝗼:\n\n{joke}")
     except Exception as e:
         logger.error(f"Joke error: {e}")
@@ -1520,6 +1590,46 @@ async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send(update, "🗑️ Conversation clear ho gaya!\n💬 Naya topic start karo — fresh se!")
 
 
+async def providers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Owner-only: ping every provider with a tiny test message and report what's actually working."""
+    if not is_owner(update):
+        await send(update, "🔒 Ye command sirf bot owner ke liye hai!")
+        return
+
+    test_msg = [{"role": "user", "content": "Reply with only the word OK"}]
+    checks = [
+        ("Cerebras",    _call_cerebras,    CEREBRAS_API_KEYS),
+        ("Groq",        _call_groq,        GROQ_API_KEYS),
+        ("Gemini",      _call_gemini,      GEMINI_API_KEYS),
+        ("Deepseek",    _call_deepseek,    DEEPSEEK_API_KEYS),
+        ("OpenRouter",  _call_openrouter,  OPENROUTER_API_KEYS),
+        ("Nvidia",      _call_nvidia,      NVIDIA_API_KEYS),
+    ]
+
+    status_msg = await update.message.reply_text("🔍 Testing all providers, ek second...")
+    lines = ["🩺 Provider Health Check\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"]
+    for name, fn, keys in checks:
+        if not keys:
+            lines.append(f"⚪ {name}: no key configured")
+            continue
+        start = datetime.now()
+        try:
+            result = fn(test_msg, "You are a test bot.", 10)
+            ms = int((datetime.now() - start).total_seconds() * 1000)
+            preview = (result or "").strip()[:30]
+            lines.append(f"✅ {name}: working ({ms}ms) → \"{preview}\"")
+        except Exception as e:
+            err = str(e)
+            if "NO_KEYS" in err:
+                lines.append(f"⛔ {name}: keys exhausted/invalid/rate-limited")
+            else:
+                lines.append(f"❌ {name}: {err[:90]}")
+    try:
+        await status_msg.edit_text("\n".join(lines))
+    except Exception:
+        await send(update, "\n".join(lines))
+
+
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await maintenance_guard(update):
         return
@@ -1531,7 +1641,7 @@ async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "→ Built for CET / JEE / NEET students\n"
         "→ Works in private chat + groups\n\n"
         "🧠 𝗔𝗜 𝗘𝗻𝗴𝗶𝗻𝗲:\n"
-        "→ Smart routing across 4 AI providers\n"
+        "→ Smart routing across 6 AI providers\n"
         "→ Best provider auto-selected per question\n"
         "→ Vision AI for image analysis\n"
         "→ /ask: 10 chat memory | /brainy: 20 chat memory\n"
@@ -1614,6 +1724,7 @@ async def quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["last_quiz"] = quiz_text
         lines = quiz_text.strip().split("\n")
         q_lines = [l for l in lines if not l.startswith(("Answer:", "Explanation:"))]
+        q_lines = [clean_response(l) for l in q_lines]
         await send(update,
             f"📝 𝗤𝘂𝗶𝘇 𝗧𝗶𝗺𝗲! ⚡\n\n"
             f"{chr(10).join(q_lines)}\n\n"
@@ -1655,6 +1766,7 @@ async def practice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     try:
         text = ai_call([{"role": "user", "content": prompt}], max_tokens=600)
+        text = clean_response(text)
         await send(update, f"🏋️ 𝗣𝗿𝗮𝗰𝘁𝗶𝗰𝗲 𝗤𝘂𝗲𝘀𝘁𝗶𝗼𝗻:\n\n{text}")
     except Exception as e:
         logger.error(f"Practice error: {e}")
@@ -1777,7 +1889,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if line.startswith("Answer:"):
                 correct_ans = line.replace("Answer:", "").strip().upper()
             if line.startswith("Explanation:"):
-                explanation = line.replace("Explanation:", "").strip()
+                explanation = clean_response(line.replace("Explanation:", "").strip())
         data["total"] += 1
         if correct_ans and user_ans == correct_ans[0]:
             data["score"] += 1
@@ -1825,9 +1937,9 @@ async def post_init(application: Application) -> None:
 
 def main():
     print("=" * 55)
-    print("  ⚡ BRAINY Study Bot v5.1 Starting...  ")
-    print("  🧠 Cerebras + Groq + Gemini + DeepSeek ")
-    print("  🔍 Tavily Search | Bold Fix | Fallbacks ")
+    print("  ⚡ BRAINY Study Bot v6.0 Starting...  ")
+    print("  🧠 Cerebras + Groq + Gemini + DeepSeek + OpenRouter ")
+    print("  🔍 Tavily Search | Bold Fix | Fallbacks | /providers ")
     print("=" * 55)
 
     app = (
@@ -1851,6 +1963,7 @@ def main():
     app.add_handler(CommandHandler("image",       image_command))
     app.add_handler(CommandHandler("roast",       roast_command))
     app.add_handler(CommandHandler("maintenance", maintenance_command))
+    app.add_handler(CommandHandler("providers",   providers_command))
     app.add_handler(CommandHandler("clear",       clear_command))
     app.add_handler(CommandHandler("about",       about_command))
     app.add_handler(CommandHandler("quiz",        quiz_command))
