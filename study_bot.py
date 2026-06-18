@@ -21,19 +21,21 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
 # ── API Keys (add as many as you want) ───────────────────
-GROQ_API_KEYS      = [k for k in [os.getenv("GROQ_API_KEY_1"),      os.getenv("GROQ_API_KEY_2"),      os.getenv("GROQ_API_KEY_3")]      if k]
-NVIDIA_API_KEYS    = [k for k in [os.getenv("NVIDIA_API_KEY_1"),    os.getenv("NVIDIA_API_KEY_2")]    if k]
-DEEPSEEK_API_KEYS  = [k for k in [os.getenv("DEEPSEEK_API_KEY_1"),  os.getenv("DEEPSEEK_API_KEY_2")]  if k]
-GEMINI_API_KEYS    = [k for k in [os.getenv("GEMINI_API_KEY_1"),    os.getenv("GEMINI_API_KEY_2")]    if k]
-TAVILY_API_KEYS    = [k for k in [os.getenv("TAVILY_API_KEY_1"),    os.getenv("TAVILY_API_KEY_2")]    if k]
-CEREBRAS_API_KEYS  = [k for k in [os.getenv("CEREBRAS_API_KEY_1"),  os.getenv("CEREBRAS_API_KEY_2")]  if k]
-OPENROUTER_API_KEYS = [k for k in [os.getenv("OPENROUTER_API_KEY_1"), os.getenv("OPENROUTER_API_KEY_2")] if k]
+GROQ_API_KEYS       = [k for k in [os.getenv(f"GROQ_API_KEY_{i}")       for i in range(1, 6)] if k]
+NVIDIA_API_KEYS     = [k for k in [os.getenv(f"NVIDIA_API_KEY_{i}")     for i in range(1, 6)] if k]
+DEEPSEEK_API_KEYS   = [k for k in [os.getenv(f"DEEPSEEK_API_KEY_{i}")   for i in range(1, 6)] if k]
+GEMINI_API_KEYS     = [k for k in [os.getenv(f"GEMINI_API_KEY_{i}")     for i in range(1, 6)] if k]
+TAVILY_API_KEYS     = [k for k in [os.getenv(f"TAVILY_API_KEY_{i}")     for i in range(1, 6)] if k]
+CEREBRAS_API_KEYS   = [k for k in [os.getenv(f"CEREBRAS_API_KEY_{i}")   for i in range(1, 6)] if k]
+OPENROUTER_API_KEYS = [k for k in [os.getenv(f"OPENROUTER_API_KEY_{i}") for i in range(1, 6)] if k]
+SAMBANOVA_API_KEYS  = [k for k in [os.getenv(f"SAMBANOVA_API_KEY_{i}")  for i in range(1, 6)] if k]
+TOGETHER_API_KEYS   = [k for k in [os.getenv(f"TOGETHER_API_KEY_{i}")   for i in range(1, 6)] if k]
 
 if not TELEGRAM_TOKEN or not GROQ_API_KEYS:
     print("ERROR: The bot server must be down try contacting dev for fix:- @shreyanshhh_08")
     exit()
 
-print(f"Groq: {len(GROQ_API_KEYS)} | Nvidia: {len(NVIDIA_API_KEYS)} | Deepseek: {len(DEEPSEEK_API_KEYS)} | Gemini: {len(GEMINI_API_KEYS)} | Tavily: {len(TAVILY_API_KEYS)} | Cerebras: {len(CEREBRAS_API_KEYS)} | OpenRouter: {len(OPENROUTER_API_KEYS)}")
+print(f"Groq: {len(GROQ_API_KEYS)} | Nvidia: {len(NVIDIA_API_KEYS)} | Deepseek: {len(DEEPSEEK_API_KEYS)} | Gemini: {len(GEMINI_API_KEYS)} | Tavily: {len(TAVILY_API_KEYS)} | Cerebras: {len(CEREBRAS_API_KEYS)} | OpenRouter: {len(OPENROUTER_API_KEYS)} | SambaNova: {len(SAMBANOVA_API_KEYS)} | Together: {len(TOGETHER_API_KEYS)}")
 if OWNER_ID: print(f"Owner ID: {OWNER_ID}")
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -289,7 +291,7 @@ MAX_ASK_HISTORY         = 10   # ask: 10 messages (5 exchanges)
 MAX_INTERACTION_LOG     = 100  # Keep last 100 saved interactions for learning
 CHOOSING_LEVEL          = 1
 
-key_idx = {"groq": 0, "nvidia": 0, "deepseek": 0, "gemini": 0, "cerebras": 0, "openrouter": 0}
+key_idx = {"groq": 0, "nvidia": 0, "deepseek": 0, "gemini": 0, "cerebras": 0, "openrouter": 0, "sambanova": 0, "together": 0}
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -821,6 +823,90 @@ def _call_openrouter(messages, system_prompt, max_tokens):
 
 
 
+def _call_sambanova(messages, system_prompt, max_tokens):
+    """SambaNova Cloud — free tier, fast Meta Llama models"""
+    if not SAMBANOVA_API_KEYS:
+        raise Exception("NO_KEYS: sambanova")
+    SAMBANOVA_MODELS = [
+        "Meta-Llama-3.3-70B-Instruct",
+        "Meta-Llama-3.1-70B-Instruct",
+        "Meta-Llama-3.1-8B-Instruct",
+    ]
+    for _ in range(len(SAMBANOVA_API_KEYS)):
+        key = _rotate_key("sambanova", SAMBANOVA_API_KEYS)
+        last_err = None
+        for model in SAMBANOVA_MODELS:
+            try:
+                payload = {
+                    "model": model,
+                    "max_tokens": max_tokens,
+                    "messages": [{"role": "system", "content": system_prompt}] + messages
+                }
+                resp = requests.post(
+                    "https://api.sambanova.ai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                    json=payload, timeout=20
+                )
+                resp.raise_for_status()
+                return resp.json()["choices"][0]["message"]["content"]
+            except Exception as e:
+                err_str = str(e).lower()
+                if "404" in err_str or "not found" in err_str or "model" in err_str:
+                    last_err = e
+                    continue
+                if _is_rate_err(e):
+                    print(f"SambaNova key rate-limited, rotating...")
+                    last_err = e
+                    break
+                last_err = e
+                break
+        if last_err and not _is_rate_err(last_err):
+            raise last_err
+    raise Exception("NO_KEYS: sambanova")
+
+
+def _call_together(messages, system_prompt, max_tokens):
+    """Together AI — free $1 credit on signup, fast inference"""
+    if not TOGETHER_API_KEYS:
+        raise Exception("NO_KEYS: together")
+    TOGETHER_MODELS = [
+        "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
+        "meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo",
+        "Qwen/Qwen2.5-72B-Instruct-Turbo",
+    ]
+    for _ in range(len(TOGETHER_API_KEYS)):
+        key = _rotate_key("together", TOGETHER_API_KEYS)
+        last_err = None
+        for model in TOGETHER_MODELS:
+            try:
+                payload = {
+                    "model": model,
+                    "max_tokens": max_tokens,
+                    "messages": [{"role": "system", "content": system_prompt}] + messages
+                }
+                resp = requests.post(
+                    "https://api.together.xyz/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                    json=payload, timeout=20
+                )
+                resp.raise_for_status()
+                return resp.json()["choices"][0]["message"]["content"]
+            except Exception as e:
+                err_str = str(e).lower()
+                if "404" in err_str or "not found" in err_str:
+                    last_err = e
+                    continue
+                if _is_rate_err(e):
+                    print(f"Together AI key rate-limited, rotating...")
+                    last_err = e
+                    break
+                last_err = e
+                break
+        if last_err and not _is_rate_err(last_err):
+            raise last_err
+    raise Exception("NO_KEYS: together")
+
+
 NUMERICAL_KEYWORDS = [
     "solve", "calculate", "find", "prove", "derive", "numerical",
     "integral", "differentiate", "equation", "theorem", "formula",
@@ -864,6 +950,8 @@ def get_provider_chain(question_type: str, system_prompt: str) -> list:
             ("Cerebras",    _call_cerebras),
             ("Gemini",      _call_gemini),
             ("Groq",        _call_groq),
+            ("SambaNova",   _call_sambanova),
+            ("Together",    _call_together),
             ("OpenRouter",  _call_openrouter),
             ("Nvidia",      _call_nvidia),
         ]
@@ -872,8 +960,10 @@ def get_provider_chain(question_type: str, system_prompt: str) -> list:
         return [
             ("Groq",        _call_groq),
             ("Cerebras",    _call_cerebras),
+            ("SambaNova",   _call_sambanova),
             ("Nvidia",      _call_nvidia),
             ("Gemini",      _call_gemini),
+            ("Together",    _call_together),
             ("OpenRouter",  _call_openrouter),
             ("Deepseek",    _call_deepseek),
         ]
@@ -883,7 +973,9 @@ def get_provider_chain(question_type: str, system_prompt: str) -> list:
             ("Gemini",      _call_gemini),
             ("Cerebras",    _call_cerebras),
             ("Groq",        _call_groq),
+            ("SambaNova",   _call_sambanova),
             ("Deepseek",    _call_deepseek),
+            ("Together",    _call_together),
             ("OpenRouter",  _call_openrouter),
             ("Nvidia",      _call_nvidia),
         ]
@@ -891,6 +983,7 @@ def get_provider_chain(question_type: str, system_prompt: str) -> list:
     return [
         ("Cerebras",    _call_cerebras),
         ("Groq",        _call_groq),
+        ("SambaNova",   _call_sambanova),
         ("Gemini",      _call_gemini),
         ("Deepseek",    _call_deepseek),
         ("OpenRouter",  _call_openrouter),
