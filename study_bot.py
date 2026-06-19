@@ -31,11 +31,109 @@ OPENROUTER_API_KEYS = [k for k in [os.getenv(f"OPENROUTER_API_KEY_{i}") for i in
 SAMBANOVA_API_KEYS  = [k for k in [os.getenv(f"SAMBANOVA_API_KEY_{i}")  for i in range(1, 6)] if k]
 TOGETHER_API_KEYS   = [k for k in [os.getenv(f"TOGETHER_API_KEY_{i}")   for i in range(1, 6)] if k]
 
+# ── Supabase (used for broadcast user list — persists across restarts) ──
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")          # e.g. https://xxxx.supabase.co
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")  # service_role key (server-side only, never expose to clients)
+
 if not TELEGRAM_TOKEN or not GROQ_API_KEYS:
     print("ERROR: The bot server must be down try contacting dev for fix:- @shreyanshhh_08")
     exit()
 
 print(f"Groq: {len(GROQ_API_KEYS)} | Nvidia: {len(NVIDIA_API_KEYS)} | Deepseek: {len(DEEPSEEK_API_KEYS)} | Gemini: {len(GEMINI_API_KEYS)} | Tavily: {len(TAVILY_API_KEYS)} | Cerebras: {len(CEREBRAS_API_KEYS)} | OpenRouter: {len(OPENROUTER_API_KEYS)} | SambaNova: {len(SAMBANOVA_API_KEYS)} | Together: {len(TOGETHER_API_KEYS)}")
+print(f"Supabase: {'connected' if (SUPABASE_URL and SUPABASE_KEY) else 'NOT configured — broadcast list wont persist'}")
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#   SUPABASE — persistent user registry for /broadcast
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Table schema (run once in Supabase SQL editor):
+#
+#   create table bot_users (
+#     chat_id     bigint primary key,
+#     chat_type   text default 'private',   -- 'private' or 'group'
+#     username    text,
+#     first_name  text,
+#     joined_at   timestamptz default now(),
+#     last_seen   timestamptz default now()
+#   );
+#
+# Uses the service_role key (server-side only) so RLS doesn't block writes.
+# All calls are wrapped in try/except — if Supabase is down or not configured,
+# the bot keeps working normally, it just can't persist/broadcast to users.
+
+def _supabase_headers() -> dict:
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+    }
+
+
+def supabase_register_user(chat_id: int, chat_type: str, username: str, first_name: str) -> None:
+    """Upsert a user/group into bot_users. Call this on /start and on any incoming message
+    so even users who never typed /start still end up reachable by /broadcast."""
+    if not (SUPABASE_URL and SUPABASE_KEY):
+        return
+    try:
+        payload = {
+            "chat_id": chat_id,
+            "chat_type": chat_type,
+            "username": username or "",
+            "first_name": first_name or "",
+            "last_seen": datetime.now().isoformat(),
+        }
+        headers = _supabase_headers()
+        headers["Prefer"] = "resolution=merge-duplicates,return=minimal"
+        requests.post(
+            f"{SUPABASE_URL}/rest/v1/bot_users",
+            headers=headers, json=payload, timeout=8
+        )
+    except Exception as e:
+        print(f"Supabase register_user failed (non-fatal): {str(e)[:100]}")
+
+
+def supabase_get_all_users() -> list:
+    """Returns list of dicts: [{chat_id, chat_type, first_name}, ...]"""
+    if not (SUPABASE_URL and SUPABASE_KEY):
+        return []
+    try:
+        resp = requests.get(
+            f"{SUPABASE_URL}/rest/v1/bot_users?select=chat_id,chat_type,first_name",
+            headers=_supabase_headers(), timeout=15
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        print(f"Supabase get_all_users failed: {str(e)[:100]}")
+        return []
+
+
+def supabase_remove_user(chat_id: int) -> None:
+    """Called when a broadcast send fails because the user blocked the bot/deleted account —
+    keeps the table clean so future broadcasts don't keep retrying dead chats."""
+    if not (SUPABASE_URL and SUPABASE_KEY):
+        return
+    try:
+        requests.delete(
+            f"{SUPABASE_URL}/rest/v1/bot_users?chat_id=eq.{chat_id}",
+            headers=_supabase_headers(), timeout=8
+        )
+    except Exception as e:
+        print(f"Supabase remove_user failed (non-fatal): {str(e)[:100]}")
+
+
+def supabase_user_count() -> int:
+    if not (SUPABASE_URL and SUPABASE_KEY):
+        return 0
+    try:
+        headers = _supabase_headers()
+        headers["Prefer"] = "count=exact"
+        resp = requests.head(f"{SUPABASE_URL}/rest/v1/bot_users?select=chat_id", headers=headers, timeout=10)
+        content_range = resp.headers.get("content-range", "")
+        if "/" in content_range:
+            return int(content_range.split("/")[-1])
+        return 0
+    except Exception:
+        return 0
 if OWNER_ID: print(f"Owner ID: {OWNER_ID}")
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1554,7 +1652,22 @@ def detect_question_type(messages) -> str:
     return "simple"
 
 def get_provider_chain(question_type: str, system_prompt: str) -> list:
-    # Numerical/brainy → DeepSeek best for math, then Cerebras (fast), Gemini, Groq
+    """
+    Every model assigned by its real-world strength, not randomly:
+      • Deepseek    → math/reasoning specialist (DeepSeek-V3 class) — best for numbers, proofs, step-by-step
+      • Cerebras    → blazing inference speed (gpt-oss-120b @ ~3000 tok/s) — best default/fast/group chat
+      • Gemini      → strongest world-knowledge + native search grounding — best for GK, facts, summaries
+      • Groq        → fast Llama hosting, great at natural creative/comedic tone — best for jokes/roasts/stories
+      • SambaNova   → fast Llama hosting, solid all-rounder backup
+      • Together    → wide open-model catalog, good knowledge breadth — backup for GK/summarize
+      • OpenRouter  → 25+ free models in one key — universal last-resort fallback
+      • Nvidia      → NIM-hosted Llama — final safety-net fallback (slowest observed)
+    Routing is keyed off the SPECIFIC system_prompt object first (so /tip, /fact, /joke, /roast,
+    /summarize, /search each get their own ideal chain regardless of what keywords are in the
+    wrapped text), then falls back to keyword-detected question_type for plain chat/ask/brainy.
+    """
+
+    # ── BRAINY deep-teaching mode + numerical questions → math specialists first
     if system_prompt == BRAINY_SYSTEM_PROMPT or question_type == "numerical":
         return [
             ("Deepseek",    _call_deepseek),
@@ -1566,31 +1679,125 @@ def get_provider_chain(question_type: str, system_prompt: str) -> list:
             ("OpenRouter",  _call_openrouter),
             ("Nvidia",      _call_nvidia),
         ]
-    # Creative → Groq (creative model), Cerebras (fast), Nvidia, Gemini
+
+    # ── Roast modes (savage humor, punchy tone) → Groq's creative tone first
+    if system_prompt in (ROAST_SYSTEM_PROMPT, ROAST_COMMAND_PROMPT):
+        return [
+            ("Groq",        _call_groq),
+            ("Together",    _call_together),
+            ("SambaNova",   _call_sambanova),
+            ("Cerebras",    _call_cerebras),
+            ("Gemini",      _call_gemini),
+            ("OpenRouter",  _call_openrouter),
+            ("Deepseek",    _call_deepseek),
+            ("Nvidia",      _call_nvidia),
+        ]
+
+    # ── Comedy (one-liner jokes) → same creative-tone priority as roast
+    if system_prompt == JOKE_SYSTEM_PROMPT:
+        return [
+            ("Groq",        _call_groq),
+            ("Together",    _call_together),
+            ("SambaNova",   _call_sambanova),
+            ("Cerebras",    _call_cerebras),
+            ("Gemini",      _call_gemini),
+            ("OpenRouter",  _call_openrouter),
+            ("Deepseek",    _call_deepseek),
+            ("Nvidia",      _call_nvidia),
+        ]
+
+    # ── Tip / Fact (accuracy + broad world-knowledge matters) → Gemini first
+    if system_prompt in (TIP_SYSTEM_PROMPT, FACT_SYSTEM_PROMPT):
+        return [
+            ("Gemini",      _call_gemini),
+            ("Together",    _call_together),
+            ("Cerebras",    _call_cerebras),
+            ("Groq",        _call_groq),
+            ("SambaNova",   _call_sambanova),
+            ("Deepseek",    _call_deepseek),
+            ("OpenRouter",  _call_openrouter),
+            ("Nvidia",      _call_nvidia),
+        ]
+
+    # ── Summarize (long-context compression) → Gemini's long-context handling first
+    if system_prompt == SUMMARIZE_SYSTEM_PROMPT:
+        return [
+            ("Gemini",      _call_gemini),
+            ("Cerebras",    _call_cerebras),
+            ("Together",    _call_together),
+            ("Deepseek",    _call_deepseek),
+            ("Groq",        _call_groq),
+            ("SambaNova",   _call_sambanova),
+            ("OpenRouter",  _call_openrouter),
+            ("Nvidia",      _call_nvidia),
+        ]
+
+    # ── Search synthesis (needs accurate grounding from live web results) → Gemini first
+    if system_prompt == SEARCH_SYSTEM_PROMPT:
+        return [
+            ("Gemini",      _call_gemini),
+            ("Cerebras",    _call_cerebras),
+            ("Deepseek",    _call_deepseek),
+            ("Together",    _call_together),
+            ("Groq",        _call_groq),
+            ("SambaNova",   _call_sambanova),
+            ("OpenRouter",  _call_openrouter),
+            ("Nvidia",      _call_nvidia),
+        ]
+
+    # ── Group chat (fast, punchy, low-latency replies) → speed-first chain
+    if system_prompt == GROUP_SYSTEM_PROMPT:
+        return [
+            ("Cerebras",    _call_cerebras),
+            ("Groq",        _call_groq),
+            ("SambaNova",   _call_sambanova),
+            ("Gemini",      _call_gemini),
+            ("Deepseek",    _call_deepseek),
+            ("OpenRouter",  _call_openrouter),
+            ("Together",    _call_together),
+            ("Nvidia",      _call_nvidia),
+        ]
+
+    # ── Generic creative (poems, stories, captions via /ask) → Groq's tone first
     if question_type == "creative":
         return [
             ("Groq",        _call_groq),
             ("Cerebras",    _call_cerebras),
             ("SambaNova",   _call_sambanova),
-            ("Nvidia",      _call_nvidia),
-            ("Gemini",      _call_gemini),
             ("Together",    _call_together),
+            ("Gemini",      _call_gemini),
             ("OpenRouter",  _call_openrouter),
             ("Deepseek",    _call_deepseek),
+            ("Nvidia",      _call_nvidia),
         ]
-    # GK → Gemini (world knowledge), Cerebras (fast), Groq, Deepseek
+
+    # ── General knowledge questions → Gemini's world-knowledge first
     if question_type == "gk":
         return [
             ("Gemini",      _call_gemini),
+            ("Together",    _call_together),
             ("Cerebras",    _call_cerebras),
             ("Groq",        _call_groq),
             ("SambaNova",   _call_sambanova),
             ("Deepseek",    _call_deepseek),
+            ("OpenRouter",  _call_openrouter),
+            ("Nvidia",      _call_nvidia),
+        ]
+
+    # ── Long/detailed explanations → fast model that can sustain longer output
+    if question_type == "detailed":
+        return [
+            ("Cerebras",    _call_cerebras),
+            ("Deepseek",    _call_deepseek),
+            ("Gemini",      _call_gemini),
+            ("Groq",        _call_groq),
+            ("SambaNova",   _call_sambanova),
             ("Together",    _call_together),
             ("OpenRouter",  _call_openrouter),
             ("Nvidia",      _call_nvidia),
         ]
-    # Default/simple → Cerebras first (fastest), then Groq, Gemini, Deepseek
+
+    # ── Default/simple chat → fastest model first
     return [
         ("Cerebras",    _call_cerebras),
         ("Groq",        _call_groq),
@@ -1598,6 +1805,7 @@ def get_provider_chain(question_type: str, system_prompt: str) -> list:
         ("Gemini",      _call_gemini),
         ("Deepseek",    _call_deepseek),
         ("OpenRouter",  _call_openrouter),
+        ("Together",    _call_together),
         ("Nvidia",      _call_nvidia),
     ]
 
@@ -1794,8 +2002,8 @@ async def maintenance_guard(update: Update, *, silent_in_group: bool = False) ->
     # Private chat — inform the user
     if not silent_in_group:
         await update.message.reply_text(
-            "🔧 Bot abhi maintenance mein hai.\n"
-            "⏳ Thodi der mein wapas aao!\n"
+            "🔧 Bot is currently under maintenance.\n"
+            "⏳ Check back in a little while!\n"
             "📢 Updates: @aurabreaker7"
         )
     return True
@@ -1958,7 +2166,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif update.message.document and update.message.document.mime_type.startswith("image/"):
         file_obj = await context.bot.get_file(update.message.document.file_id)
     else:
-        await send(update, "❌ Sirf image files support hoti hain!")
+        await send(update, "❌ Only image files are supported!")
         return
 
     loading_msg = await update.message.reply_text("🔍 Scanning .  ")
@@ -1983,11 +2191,11 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await loading_msg.delete()
         if "NO_KEYS" in str(e):
             await send(update,
-                "❌ Image analysis ke liye GEMINI_API_KEY_1 .env mein add karo!\n"
+                "❌ Add GEMINI_API_KEY_1 to .env for image analysis!\n"
                 "🔗 Free key: aistudio.google.com"
             )
         else:
-            await send(update, f"❌ Image scan mein error: {str(e)[:100]}\n\n⏳ Phir try karo!")
+            await send(update, f"❌ Error scanning image: {str(e)[:100]}\n\n⏳ Try again in a bit!")
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #   ALL COMMANDS
@@ -1997,17 +2205,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await maintenance_guard(update):
         return
     if is_group(update):
+        chat = update.effective_chat
+        supabase_register_user(chat.id, "group", chat.title or "", "")
         await send(update,
-            "⚡ 𝗕𝗥𝗔𝗜𝗡𝗬 𝗦𝘁𝘂𝗱𝘆 𝗕𝗼𝘁 𝗮𝗰𝘁𝗶𝘃𝗲 𝗵𝗮𝗶! ⚡\n\n"
+            "⚡ 𝗕𝗥𝗔𝗜𝗡𝗬 𝗦𝘁𝘂𝗱𝘆 𝗕𝗼𝘁 𝗶𝘀 𝗮𝗰𝘁𝗶𝘃𝗲! ⚡\n\n"
             "📋 𝗚𝗿𝗼𝘂𝗽 𝗖𝗼𝗺𝗺𝗮𝗻𝗱𝘀:\n"
-            "⚡ /ask [sawaal]    — AI se poochho\n"
+            "⚡ /ask [question]  — Ask the AI\n"
             "🧠 /brainy [topic] — Deep explanation\n"
-            "📷 /image [sawaal] — Image solve karo\n"
+            "📷 /image [question] — Solve from an image\n"
             "💡 /tip            — Study tip of the day\n"
             "🤯 /fact           — Mind-blowing fact\n"
-            "😂 /joke           — Ek joke suno\n"
+            "😂 /joke           — Hear a joke\n"
             "🔍 /search [query] — Real-time web search\n\n"
-            "🔒 Private chat mein aao full features ke liye!\n"
+            "🔒 Come to a private chat for full features!\n"
             "📢 Join: @aurabreaker7"
         )
         return
@@ -2015,38 +2225,35 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id   = update.effective_user.id
     user_conversations[user_id] = []
     get_user_data(user_id)
+    supabase_register_user(user_id, "private", update.effective_user.username or "", user_name or "")
     await send(update,
         f"⚡ 𝗡𝗮𝗺𝗮𝘀𝘁𝗲, {user_name}! ⚡\n\n"
-        "🤖 Main hoon 𝗕𝗥𝗔𝗜𝗡𝗬 — tera Personal AI Study Partner!\n"
+        "🤖 I'm 𝗕𝗥𝗔𝗜𝗡𝗬 — Your Personal AI Study Partner!\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "🎯 𝗠𝗮𝗶𝗻 𝗸𝘆𝗮 𝗸𝗮𝗿 𝘀𝗮𝗸𝘁𝗮 𝗵𝗼𝗼𝗻:\n"
-        "→ Physics, Chemistry, Math, Biology solve karna\n"
-        "→ Step-by-step numericals explain karna\n"
-        "→ Image se questions read & solve karna\n"
-        "→ MCQ quiz & practice questions dena\n"
-        "→ Subject formulas ek jagah batana\n"
-        "→ GK, current affairs, tech questions answer karna\n"
-        "→ /ask: 10 chat memory | /brainy: 20 chat memory 🧠\n"
-        "→ Group mein reply (left swipe) se baat karo — bina tag ke!\n\n"
+        "🎯 What I can do:\n"
+"→ Crack Physics, Chemistry, Math & Biology problems\n"
+"→ Break down numericals step-by-step — no shortcuts\n"
+"→ Solve questions straight from your photos\n"
+"→ Run MCQ quizzes & build practice sets\n"
+"→ Pull up any subject's formulas instantly\n"
+"→ Answer GK, current affairs & tech questions\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         "📋 𝗖𝗼𝗺𝗺𝗮𝗻𝗱𝘀:\n"
-        "⚡ /ask       — Seedha sawaal poochho\n"
+        "⚡ /ask       — Flash 3.1 {Fast Answer}\n"
         "🧠 /brainy    — Deep teacher-level explanation\n"
-        "📷 /image     — Photo bhejo, answer pao\n"
-        "🎯 /level     — Apna level set karo\n"
+        "📷 /image     — Answer to the image question\n"
+        "🎯 /level     — Standard level set\n"
         "📝 /quiz      — Random MCQ practice\n"
         "📚 /formula   — Subject formulas list\n"
         "🏋️ /practice  — Exam-style question\n"
-        "📊 /progress  — Tera score card\n"
+        "📊 /progress  — Score card\n"
         "💡 /tip       — Study tip of the day\n"
         "🤯 /fact      — Mind-blowing fact\n"
-        "😂 /joke      — Ek funny joke\n"
-        "📋 /summarize — Kisi topic ka summary\n"
+        "📋 /summarize — Summary of a topic\n"
         "🔍 /search    — Real-time web search\n"
         "🗑️ /clear     — Chat history reset\n"
-        "ℹ️ /about     — Bot ke baare mein\n"
+        "ℹ️ /about     — About the bot\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "💬 Ya seedha koi bhi sawaal type karo — main samajh lunga!"
     )
     print(f"User started: {user_name} ({user_id})")
 
@@ -2057,35 +2264,32 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_group(update):
         await send(update,
             "📋 𝗚𝗿𝗼𝘂𝗽 𝗖𝗼𝗺𝗺𝗮𝗻𝗱𝘀:\n\n"
-            "⚡ /ask [sawaal]    — AI se poochho\n"
+            "⚡ /ask       — Flash 3.1 {Fast Answer}\n"
             "🧠 /brainy [topic] — Detailed explanation\n"
-            "📷 /image [sawaal] — Image ke saath\n"
+            "📷 /image     — Answer to the image question\n"
             "💡 /tip            — Study tip\n"
             "🤯 /fact           — Interesting fact\n"
-            "😂 /joke           — Joke suno\n\n"
-            "🔒 Private chat mein /help bhejo full menu ke liye!"
+            "🔒Send /help in a private chat to see the full menu!"
         )
         return
     await send(update,
         "📋 𝗛𝗲𝗹𝗽 𝗠𝗲𝗻𝘂 — 𝗕𝗥𝗔𝗜𝗡𝗬\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "⚡ /ask [sawaal]    — Quick focused answer\n"
-        "🧠 /brainy [topic] — Deep teacher mode\n"
-        "📷 /image          — Photo send karo\n"
-        "🎯 /level          — Class 11/12/Dropper set\n"
-        "📝 /quiz           — MCQ practice\n"
-        "📚 /formula        — Formulas by subject\n"
-        "🏋️ /practice       — Exam-pattern question\n"
-        "📊 /progress       — Score card\n"
-        "💡 /tip            — Study productivity tip\n"
-        "🤯 /fact           — Mind-blowing fact\n"
-        "😂 /joke           — Funny joke\n"
-        "📋 /summarize [topic] — Topic ka summary\n"
-        "🔍 /search [query]   — Real-time web search\n"
-        "🗑️ /clear          — Memory reset\n"
-        "ℹ️ /about          — Bot info\n\n"
+       "⚡ /ask       — Flash 3.1 {Fast Answer}\n"
+        "🧠 /brainy    — Deep teacher-level explanation\n"
+        "📷 /image     — Answer to the image question\n"
+        "🎯 /level     — Standard level set\n"
+        "📝 /quiz      — Random MCQ practice\n"
+        "📚 /formula   — Subject formulas list\n"
+        "🏋️ /practice  — Exam-style question\n"
+        "📊 /progress  — Score card\n"
+        "💡 /tip       — Study tip of the day\n"
+        "🤯 /fact      — Mind-blowing fact\n"
+        "📋 /summarize — Summary of a topic\n"
+        "🔍 /search    — Real-time web search\n"
+        "🗑️ /clear     — Chat history reset\n"
+        "ℹ️ /about     — About the bot\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "💬 Ya directly koi bhi baat karo — I remember last 7 chats! 🧠"
     )
 
 
@@ -2094,7 +2298,7 @@ async def ask_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     question = update.message.text.partition(" ")[2].strip()
     if not question:
-        await send(update, "❓ Sawaal bhi likho bhai!\n📝 Example: /ask Newton ka pehla law kya hai?")
+        await send(update, "❓Write your Question too!\n📝 Example: /ask  What is the first law of Newton?")
         return
     await process_ask(update, question)
 
@@ -2104,7 +2308,7 @@ async def brainy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     question = update.message.text.partition(" ")[2].strip()
     if not question:
-        await send(update, "🧠 Topic ya sawaal likho!\n📝 Example: /brainy Photosynthesis explain karo")
+        await send(update, "🧠 Write the topic or question!\n📝 Example: /brainy Explain photosynthesis")
         return
     await process_brainy(update, question)
 
@@ -2117,25 +2321,25 @@ async def image_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         if is_group(update):
             await send(update,
-                "📷 Image ke saath /image use karo!\n\n"
-                "→ Image bhejo\n"
-                "→ Caption mein likho: /image [sawaal]\n\n"
-                "📝 Example: Image attach + caption: /image is numerical ko solve karo"
+                "📷 Use /image command with an image!\n\n"
+                "→ Send the image\n"
+                "→ Write image question as caption\n\n"
+                "📝 Example: Image attach + caption: /image Solve this numerical"
             )
         else:
             await send(update,
-                "📷 Private chat mein bas photo bhej do — main automatically analyze kar dunga!\n\n"
-                "💡 Ya /image ke saath photo attach karo aur caption mein sawaal likho."
+                "📷 Just send an image with a question as the caption in private chat!\n\n"
+                "💡 Attach the image and write your question in the caption."
             )
 
 
 async def roast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update):
-        await send(update, "🔒 Ye command sirf bot owner ke liye reserved hai!")
+        await send(update, "🔒 This command is reserved for the bot owner only!")
         return
     args = update.message.text.partition(" ")[2].strip()
     if not args:
-        await send(update, "🎯 Kisko roast karun? Example: /roast @username ya /roast Rahul")
+        await send(update, "🎯Who do you want to roast? Example: /roast @username or /roast Rahul")
         return
     target_name = args.lstrip("@")
     if update.message.reply_to_message:
@@ -2163,7 +2367,7 @@ async def roast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Roast error: {e}")
         await loading_msg.delete()
-        await send(update, "❌ Roast generate nahi hua. Thodi der baad try karo!")
+        await send(update, "❌ Roast not generated!")
 
 
 async def tip_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2177,7 +2381,7 @@ async def tip_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send(update, f"💡 𝗧𝗶𝗽 𝗼𝗳 𝘁𝗵𝗲 𝗗𝗮𝘆:\n\n{tip}")
     except Exception as e:
         logger.error(f"Tip error: {e}")
-        await send(update, "❌ Tip generate nahi hua. Phir try karo!")
+        await send(update, "❌ Tip not generated!")
 
 
 async def fact_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2193,7 +2397,7 @@ async def fact_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send(update, f"🤯 𝗠𝗶𝗻𝗱-𝗕𝗹𝗼𝘄𝗶𝗻𝗴 𝗙𝗮𝗰𝘁:\n\n{fact}")
     except Exception as e:
         logger.error(f"Fact error: {e}")
-        await send(update, "❌ Fact load nahi hua. Phir try karo!")
+        await send(update, "❌ Fact not generated!")
 
 
 async def joke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2204,10 +2408,10 @@ async def joke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         joke = ai_call([{"role": "user", "content": prompt}], JOKE_SYSTEM_PROMPT, 150)
         joke = clean_response(joke)
-        await send(update, f"😂 𝗝𝗼𝗸𝗲 𝗦𝘂𝗻𝗼:\n\n{joke}")
+        await send(update, f"😂 𝗝𝗼𝗸𝗲 𝗧𝗶𝗺𝗲:\n\n{joke}")
     except Exception as e:
         logger.error(f"Joke error: {e}")
-        await send(update, "❌ Joke load nahi hua. Apni life dekhle joke se kam nahi! 😂")
+        await send(update, "❌ Joke not generated. Check your life, joke isn't working! 😂")
 
 
 async def summarize_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2216,7 +2420,7 @@ async def summarize_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     topic = update.message.text.partition(" ")[2].strip()
     if not topic:
-        await send(update, "📋 Topic likho!\n📝 Example: /summarize Photosynthesis\n/summarize Newton's Laws of Motion")
+        await send(update, "📋 Write the topic!\n📝 Example: /summarize Photosynthesis\n/summarize Newton's Laws of Motion")
         return
     prompt = f"Summarize this topic clearly and concisely for a student: {topic}"
     try:
@@ -2224,7 +2428,7 @@ async def summarize_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send(update, clean_response(summary))
     except Exception as e:
         logger.error(f"Summarize error: {e}")
-        await send(update, "❌ Summary generate nahi hua. Phir try karo!")
+        await send(update, "❌ Summary not generated. Try again later!")
 
 
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2239,7 +2443,7 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Examples:\n"
             "→ /search IPL 2025 winner\n"
             "→ /search latest AI model 2025\n"
-            "→ /search aaj ka news India"
+            "→ /search today's news India"
         )
         return
 
@@ -2294,24 +2498,24 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Search command error: {e}")
         await loading_msg.delete()
-        await send(update, f"❌ Search mein error aaya: {str(e)[:100]}\n\n⏳ Thodi der baad phir try karo!")
+        await send(update, f"❌ Search error: {str(e)[:100]}\n\n⏳ Try again in a bit!")
 
 
 async def maintenance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global MAINTENANCE_MODE
     if not is_owner(update):
-        await send(update, "🔒 Ye command sirf bot owner ke liye hai!")
+        await send(update, "🔒 This command is for the bot owner only!")
         return
     MAINTENANCE_MODE = not MAINTENANCE_MODE
     if MAINTENANCE_MODE:
         await send(update,
             "🔧 Maintenance Mode ON\n"
-            "⛔ Koi bhi user bot use nahi kar sakta.\n"
-            "🔄 Wapas OFF karne ke liye /maintenance dobara bhejo."
+            "⛔ No user can use the bot right now.\n"
+            "🔄 Send /maintenance again to turn it back OFF."
         )
         print("MAINTENANCE MODE: ON")
     else:
-        await send(update, "✅ Maintenance Mode OFF\n🚀 Bot ab sabke liye available hai!")
+        await send(update, "✅ Maintenance Mode OFF\n🚀 Bot is available for everyone again!")
         print("MAINTENANCE MODE: OFF")
 
 
@@ -2319,13 +2523,13 @@ async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await maintenance_guard(update):
         return
     user_conversations[update.effective_user.id] = []
-    await send(update, "🗑️ Conversation clear ho gaya!\n💬 Naya topic start karo — fresh se!")
+    await send(update, "🗑️ Conversation cleared!\n💬 Start a fresh topic anytime!")
 
 
 async def providers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Owner-only: ping every provider with a tiny test message and report what's actually working."""
     if not is_owner(update):
-        await send(update, "🔒 Ye command sirf bot owner ke liye hai!")
+        await send(update, "🔒 This command is for the bot owner only!")
         return
 
     test_msg = [{"role": "user", "content": "Reply with only the word OK"}]
@@ -2360,6 +2564,86 @@ async def providers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_msg.edit_text("\n".join(lines))
     except Exception:
         await send(update, "\n".join(lines))
+
+
+async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Owner-only: /broadcast <message> — sends a message to every user/group stored in Supabase.
+    Asks for confirmation first since this can't be undone, then sends with a small delay
+    between messages (Telegram rate-limits bulk sends) and auto-removes dead chats."""
+    if not is_owner(update):
+        await send(update, "🔒 This command is for the bot owner only!")
+        return
+
+    if not (SUPABASE_URL and SUPABASE_KEY):
+        await send(update,
+            "⚠️ Supabase configure nahi hai abhi.\n"
+            "SUPABASE_URL aur SUPABASE_SERVICE_KEY env variables set karo Railway mein, "
+            "phir bot restart karke try karo."
+        )
+        return
+
+    text = " ".join(context.args) if context.args else ""
+    if not text.strip():
+        await send(update,
+            "📢 𝗨𝘀𝗮𝗴𝗲:\n/broadcast <your message>\n\n"
+            "Example:\n/broadcast Naya feature aa gaya hai! /quiz try karo 🔥"
+        )
+        return
+
+    users = supabase_get_all_users()
+    if not users:
+        await send(update, "⚠️ Koi registered user nahi mila Supabase mein abhi tak.")
+        return
+
+    context.user_data["pending_broadcast"] = text
+    await send(update,
+        f"📢 𝗖𝗼𝗻𝗳𝗶𝗿𝗺 𝗕𝗿𝗼𝗮𝗱𝗰𝗮𝘀𝘁\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"👥 Recipients: {len(users)}\n\n"
+        f"📝 Message preview:\n{text}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"✅ Confirm bhejne ke liye: /confirmbroadcast\n"
+        f"❌ Cancel karne ke liye: kuch bhi aur type karo"
+    )
+
+
+async def confirm_broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update):
+        await send(update, "🔒 This command is for the bot owner only!")
+        return
+
+    text = context.user_data.get("pending_broadcast")
+    if not text:
+        await send(update, "⚠️ Koi pending broadcast nahi hai. Pehle /broadcast <message> bhejo.")
+        return
+
+    users = supabase_get_all_users()
+    status_msg = await update.message.reply_text(f"📤 Sending to {len(users)} chats, ek second...")
+
+    sent, failed = 0, 0
+    for u in users:
+        chat_id = u.get("chat_id")
+        if not chat_id:
+            continue
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=text)
+            sent += 1
+        except Exception as e:
+            failed += 1
+            err = str(e).lower()
+            if any(w in err for w in ["blocked", "deactivated", "not found", "kicked", "chat not found"]):
+                supabase_remove_user(chat_id)
+        await asyncio.sleep(0.05)  # ~20 msgs/sec, stays under Telegram's bulk-send limits
+
+    context.user_data["pending_broadcast"] = None
+    try:
+        await status_msg.edit_text(
+            f"✅ Broadcast complete!\n"
+            f"📨 Sent: {sent}\n"
+            f"❌ Failed/removed: {failed}"
+        )
+    except Exception:
+        await send(update, f"✅ Broadcast complete!\n📨 Sent: {sent}\n❌ Failed/removed: {failed}")
 
 
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2403,12 +2687,12 @@ async def level_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await maintenance_guard(update):
         return
     if is_group(update):
-        await send(update, "🎯 Level set karne ke liye private chat mein aao!")
+        await send(update, "🎯 Come to a private chat to set your level!")
         return
     keyboard = [["1️⃣ Class 11", "2️⃣ Class 12"], ["3️⃣ Dropper"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text(
-        "🎯 Tu konsi class mein hai?\n"
+        "🎯 Which class are you in?\n"
         "→ Iske hisaab se main answers adjust karunga!\n\n"
         "Select karo:",
         reply_markup=reply_markup
@@ -2426,7 +2710,7 @@ async def level_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:                     data["level"] = choice
     await update.message.reply_text(
         f"✅ Level set: 𝗖𝗹𝗮𝘀𝘀 {data['level']}\n"
-        f"🧠 Ab main usi level ke hisaab se help karunga!",
+        f"🧠 I'll tailor my help to that level from now on!",
         reply_markup=ReplyKeyboardRemove()
     )
     return ConversationHandler.END
@@ -2441,7 +2725,7 @@ async def quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await maintenance_guard(update):
         return
     if is_group(update):
-        await send(update, "📝 Quiz ke liye private chat mein aao!")
+        await send(update, "📝 Come to a private chat for quizzes!")
         return
     data  = get_user_data(update.effective_user.id)
     level = data.get("level") or "Class 12"
@@ -2461,23 +2745,23 @@ async def quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📝 𝗤𝘂𝗶𝘇 𝗧𝗶𝗺𝗲! ⚡\n\n"
             f"{chr(10).join(q_lines)}\n\n"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"👇 Apna answer bhejo: A / B / C / D"
+            f"👇 Send your answer: A / B / C / D"
         )
     except Exception as e:
         logger.error(f"Quiz error: {e}")
-        await send(update, "❌ Quiz generate karne mein error. Phir try karo!")
+        await send(update, "❌ Error generating quiz. Try again!")
 
 
 async def formula_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await maintenance_guard(update):
         return
     if is_group(update):
-        await send(update, "📚 Formulas ke liye private chat mein aao!")
+        await send(update, "📚 Come to a private chat for formulas!")
         return
     keyboard = [["⚡ Physics", "🧪 Chemistry"], ["📐 Math", "🧬 Biology"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text(
-        "📚 Konse subject ki formulas chahiye?",
+        "📚 Which subject's formulas do you need?",
         reply_markup=reply_markup
     )
     context.user_data["waiting_for"] = "formula_subject"
@@ -2487,7 +2771,7 @@ async def practice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await maintenance_guard(update):
         return
     if is_group(update):
-        await send(update, "🏋️ Practice questions ke liye private chat mein aao!")
+        await send(update, "🏋️ Come to a private chat for practice questions!")
         return
     data  = get_user_data(update.effective_user.id)
     level = data.get("level") or "Class 12"
@@ -2502,7 +2786,7 @@ async def practice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send(update, f"🏋️ 𝗣𝗿𝗮𝗰𝘁𝗶𝗰𝗲 𝗤𝘂𝗲𝘀𝘁𝗶𝗼𝗻:\n\n{text}")
     except Exception as e:
         logger.error(f"Practice error: {e}")
-        await send(update, "❌ Practice question mein error. Phir try karo!")
+        await send(update, "❌ Error generating practice question. Try again!")
 
 
 async def progress_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2511,20 +2795,20 @@ async def progress_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data    = get_user_data(update.effective_user.id)
     total   = data["total"]
     score   = data["score"]
-    level   = data.get("level") or "Set nahi kiya"
+    level   = data.get("level") or "Not set"
     joined  = data.get("joined", "N/A")
     percent = round((score / total * 100)) if total > 0 else 0
 
     if percent >= 80:
-        emoji, remark, bar = "🔥", "Ekdum mast ja raha hai! Keep it up!", "██████████"
+        emoji, remark, bar = "🔥", "Crushing it! Keep it up!", "██████████"
     elif percent >= 60:
-        emoji, remark, bar = "⚡", "Accha chal raha hai — aur thoda push kar!", "████████▒▒"
+        emoji, remark, bar = "⚡", "Going strong — push a bit more!", "████████▒▒"
     elif percent >= 40:
-        emoji, remark, bar = "📈", "Average hai abhi — practice badha!", "██████▒▒▒▒"
+        emoji, remark, bar = "📈", "Average right now — practice more!", "██████▒▒▒▒"
     elif total == 0:
-        emoji, remark, bar = "🎯", "Quiz khelo aur progress track karo!", "▒▒▒▒▒▒▒▒▒▒"
+        emoji, remark, bar = "🎯", "Play a quiz to start tracking progress!", "▒▒▒▒▒▒▒▒▒▒"
     else:
-        emoji, remark, bar = "💪", "Koi baat nahi — galtiyon se hi seekhte hain!", "████▒▒▒▒▒▒"
+        emoji, remark, bar = "💪", "No worries — mistakes are how we learn!", "████▒▒▒▒▒▒"
 
     await send(update,
         f"📊 𝗣𝗿𝗼𝗴𝗿𝗲𝘀𝘀 𝗥𝗲𝗽𝗼𝗿𝘁\n"
@@ -2542,11 +2826,27 @@ async def progress_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #   MESSAGE HANDLER
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+_registered_chats_cache = set()  # avoids hitting Supabase on every single message
+
+def _maybe_register_chat(update: Update) -> None:
+    """Registers a chat in Supabase at most once per bot process run — keeps it cheap."""
+    chat = update.effective_chat
+    if not chat or chat.id in _registered_chats_cache:
+        return
+    _registered_chats_cache.add(chat.id)
+    if chat.type == "private":
+        u = update.effective_user
+        supabase_register_user(chat.id, "private", (u.username if u else "") or "", (u.first_name if u else "") or "")
+    else:
+        supabase_register_user(chat.id, "group", chat.title or "", "")
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     if not msg:
         return
     msg_text = msg.text or ""
+    _maybe_register_chat(update)
 
     # ── GROUP HANDLING ──────────────────────────────────────
     if is_group(update):
@@ -2611,7 +2911,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await send(update, f"📚 𝗙𝗼𝗿𝗺𝘂𝗹𝗮𝘀 — {mono(subject)}:\n\n{formulas}")
         except Exception as e:
             logger.error(f"Formula error: {e}")
-            await send(update, "❌ Formulas fetch karne mein error. Phir try karo!")
+            await send(update, "❌ Error fetching formulas. Try again!")
         return
 
     # Quiz answer check
@@ -2628,17 +2928,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if correct_ans and user_ans == correct_ans[0]:
             data["score"] += 1
             result_text = (
-                f"✅ 𝗕𝗶𝗹𝗸𝘂𝗹 𝗦𝗮𝗵𝗶! 🎉\n\n"
+                f"✅ 𝗖𝗼𝗿𝗿𝗲𝗰𝘁! 🎉\n\n"
                 f"💡 Explanation: {explanation}\n\n"
                 f"📊 Score: {data['score']}/{data['total']}"
             )
         else:
             result_text = (
-                f"❌ 𝗚𝗮𝗹𝗮𝘁!\n\n"
-                f"✅ Sahi answer: {correct_ans}\n\n"
+                f"❌ 𝗪𝗿𝗼𝗻𝗴!\n\n"
+                f"✅ Correct answer: {correct_ans}\n\n"
                 f"💡 Explanation: {explanation}\n\n"
                 f"📊 Score: {data['score']}/{data['total']}\n\n"
-                f"💪 Koi baat nahi — galtiyon se hi seekhte hain!"
+                f"💪 No worries — mistakes are how we learn!"
             )
         context.user_data.pop("last_quiz")
         await send(update, result_text)
@@ -2699,6 +2999,8 @@ def main():
     app.add_handler(CommandHandler("roast",       roast_command))
     app.add_handler(CommandHandler("maintenance", maintenance_command))
     app.add_handler(CommandHandler("providers",   providers_command))
+    app.add_handler(CommandHandler("broadcast",        broadcast_command))
+    app.add_handler(CommandHandler("confirmbroadcast", confirm_broadcast_command))
     app.add_handler(CommandHandler("clear",       clear_command))
     app.add_handler(CommandHandler("about",       about_command))
     app.add_handler(CommandHandler("quiz",        quiz_command))
