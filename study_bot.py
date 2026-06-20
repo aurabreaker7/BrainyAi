@@ -1662,6 +1662,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"User started: {user_name} ({user_id})")
 
 
+async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Quick latency check — measures Telegram round-trip + bot processing time."""
+    start = datetime.now()
+    msg = await update.message.reply_text("🏓 Pinging...")
+    ms = int((datetime.now() - start).total_seconds() * 1000)
+    try:
+        await msg.edit_text(f"🏓 Pong! {ms}ms")
+    except Exception:
+        pass
+
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await maintenance_guard(update):
         return
@@ -1692,7 +1703,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📋 /summarize — Summary of a topic\n"
         "🔍 /search    — Real-time web search\n"
         "🗑️ /clear     — Chat history reset\n"
-        "ℹ️ /about     — About the bot\n\n"
+        "ℹ️ /about     — About the bot\n"
+        "🏓 /ping      — Check bot response speed\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
     )
 
@@ -2409,6 +2421,7 @@ def main():
     app.add_handler(CommandHandler("confirmbroadcast", confirm_broadcast_command))
     app.add_handler(CommandHandler("clear",       clear_command))
     app.add_handler(CommandHandler("about",       about_command))
+    app.add_handler(CommandHandler("ping",        ping_command))
     app.add_handler(CommandHandler("quiz",        quiz_command))
     app.add_handler(CommandHandler("formula",     formula_command))
     app.add_handler(CommandHandler("practice",    practice_command))
