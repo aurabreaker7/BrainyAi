@@ -137,6 +137,147 @@ def supabase_user_count() -> int:
 if OWNER_ID: print(f"Owner ID: {OWNER_ID}")
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#   PERSISTENT MEMORY — Supabase conversation history
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  Run this SQL in Supabase ONCE to enable persistent memory:
+#
+#  create table if not exists user_memory (
+#    user_id      bigint primary key,
+#    first_name   text    default '',
+#    username     text    default '',
+#    level        text    default '',
+#    score        int     default 0,
+#    total        int     default 0,
+#    joined_at    timestamptz default now(),
+#    history      jsonb   default '[]'::jsonb,   -- last 20 messages
+#    ask_history  jsonb   default '[]'::jsonb,   -- last 10 /ask messages
+#    updated_at   timestamptz default now()
+#  );
+#
+#  create index if not exists idx_user_memory_user_id on user_memory(user_id);
+
+MAX_SAVED_HISTORY = 20   # how many messages to persist (same as in-memory MAX_HISTORY)
+
+def _sb_save_user_memory(user_id: int, first_name: str = "", username: str = "",
+                          history: list = None, ask_history: list = None,
+                          level: str = "", score: int = 0, total: int = 0) -> None:
+    """Upsert full user state into Supabase user_memory table — non-blocking fire-and-forget."""
+    if not (SUPABASE_URL and SUPABASE_KEY):
+        return
+    try:
+        import json as _json
+        payload = {
+            "user_id":     user_id,
+            "first_name":  first_name or "",
+            "username":    username or "",
+            "level":       level or "",
+            "score":       score,
+            "total":       total,
+            "updated_at":  datetime.now().isoformat(),
+        }
+        if history is not None:
+            # Only save last MAX_SAVED_HISTORY messages & truncate content to save space
+            trimmed = history[-MAX_SAVED_HISTORY:]
+            payload["history"] = _json.dumps([
+                {"role": m["role"], "content": m["content"][:800]}
+                for m in trimmed
+            ])
+        if ask_history is not None:
+            trimmed_ask = ask_history[-10:]
+            payload["ask_history"] = _json.dumps([
+                {"role": m["role"], "content": m["content"][:600]}
+                for m in trimmed_ask
+            ])
+        headers = _supabase_headers()
+        headers["Prefer"] = "resolution=merge-duplicates,return=minimal"
+        requests.post(
+            f"{SUPABASE_URL}/rest/v1/user_memory",
+            headers=headers, json=payload, timeout=6
+        )
+    except Exception as e:
+        print(f"[memory] save failed (non-fatal): {str(e)[:80]}")
+
+
+def _sb_load_user_memory(user_id: int) -> dict:
+    """Load a user's full state from Supabase. Returns {} if not found."""
+    if not (SUPABASE_URL and SUPABASE_KEY):
+        return {}
+    try:
+        import json as _json
+        resp = requests.get(
+            f"{SUPABASE_URL}/rest/v1/user_memory?user_id=eq.{user_id}&select=*&limit=1",
+            headers=_supabase_headers(), timeout=8
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        if not rows:
+            return {}
+        row = rows[0]
+        # Deserialize JSON columns
+        for key in ("history", "ask_history"):
+            val = row.get(key)
+            if isinstance(val, str):
+                try:
+                    row[key] = _json.loads(val)
+                except Exception:
+                    row[key] = []
+            elif val is None:
+                row[key] = []
+        return row
+    except Exception as e:
+        print(f"[memory] load failed (non-fatal): {str(e)[:80]}")
+        return {}
+
+
+def load_user_into_memory(user_id: int, first_name: str = "", username: str = "") -> None:
+    """
+    Called once per user on their first message/command in a session.
+    Restores their conversation history + profile from Supabase into in-memory dicts.
+    """
+    if user_id in user_conversations:
+        return   # already loaded this session
+    row = _sb_load_user_memory(user_id)
+    # Restore conversation histories
+    user_conversations[user_id] = row.get("history") or []
+    ask_conversations[user_id]  = row.get("ask_history") or []
+    # Restore profile / progress data
+    if user_id not in user_data_store:
+        user_data_store[user_id] = {
+            "level":  row.get("level") or "",
+            "score":  row.get("score") or 0,
+            "total":  row.get("total") or 0,
+            "joined": datetime.now().strftime("%d %b %Y"),
+        }
+    if row:
+        d = user_data_store[user_id]
+        d["level"] = row.get("level") or d.get("level") or ""
+        d["score"] = row.get("score") or d.get("score") or 0
+        d["total"] = row.get("total") or d.get("total") or 0
+        restored = len(user_conversations[user_id])
+        if restored:
+            print(f"[memory] restored {restored} messages for user {user_id} ({first_name})")
+
+
+def save_user_memory_async(user_id: int) -> None:
+    """Fire-and-forget: saves current in-memory state for user_id to Supabase."""
+    import threading
+    data = user_data_store.get(user_id, {})
+    u    = user_data_store.get(user_id, {})
+    threading.Thread(
+        target=_sb_save_user_memory,
+        kwargs=dict(
+            user_id    = user_id,
+            history    = user_conversations.get(user_id, []),
+            ask_history= ask_conversations.get(user_id, []),
+            level      = data.get("level", ""),
+            score      = data.get("score", 0),
+            total      = data.get("total", 0),
+        ),
+        daemon=True
+    ).start()
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #   FANCY UNICODE FONT HELPERS
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -2199,25 +2340,41 @@ async def process_ask(update: Update, question: str):
     if is_abusing_owner(question):
         await roast_abuser(update)
         return
-    user_id = update.effective_user.id
+    user_id    = update.effective_user.id
+    first_name = update.effective_user.first_name or ""
+    username   = update.effective_user.username or ""
+
+    # ── Restore from Supabase if first message this session ──
+    load_user_into_memory(user_id, first_name, username)
+
     if user_id not in ask_conversations:
         ask_conversations[user_id] = []
     data = get_user_data(user_id)
     level = data.get("level")
     level_ctx = f"\nStudent ka level: {level}." if level else ""
-    prompt = GROUP_SYSTEM_PROMPT if is_group(update) else SYSTEM_PROMPT
-    max_tok = 250 if is_group(update) else None   # None = ai_call picks smart limit
 
-    # Inject learning context into system prompt
+    prompt = GROUP_SYSTEM_PROMPT if is_group(update) else SYSTEM_PROMPT
+    max_tok = 250 if is_group(update) else None
+
+    # ── Inject user identity + learning context ───────────────
+    user_ctx_parts = []
+    if first_name:
+        user_ctx_parts.append(f"User's name: {first_name}. Address them by name occasionally to feel personal.")
+    if level:
+        user_ctx_parts.append(f"Student level: {level}. Tailor depth/complexity accordingly.")
     learn_ctx = get_learning_context(5)
     if learn_ctx:
-        prompt = prompt + "\n\n" + learn_ctx
+        user_ctx_parts.append(learn_ctx)
+    if user_ctx_parts:
+        prompt = prompt + "\n\n" + "\n".join(user_ctx_parts)
 
     ask_conversations[user_id].append({"role": "user", "content": question + level_ctx})
     trim_ask_history(user_id)
     result = await _run_ai(update, ask_conversations[user_id], prompt, max_tok, source="ask")
     if result:
         ask_conversations[user_id].append({"role": "assistant", "content": result})
+        # ── Persist to Supabase async (non-blocking) ─────────
+        save_user_memory_async(user_id)
 
 async def process_brainy(update: Update, question: str):
     if is_abusing_owner(question):
