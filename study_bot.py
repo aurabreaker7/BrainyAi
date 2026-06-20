@@ -645,7 +645,14 @@ def _call_gemini(messages, system_prompt, max_tokens):
                     resp.raise_for_status()
                     data = resp.json()
                     candidate = data["candidates"][0]
-                    text = candidate["content"]["parts"][0]["text"]
+                    parts = candidate.get("content", {}).get("parts")
+                    if not parts:
+                        # Thinking-enabled model spent the whole token budget on internal
+                        # reasoning and never produced visible text — give a clear reason
+                        # instead of a bare KeyError so it's obvious what happened.
+                        reason = candidate.get("finishReason", "UNKNOWN")
+                        raise Exception(f"Gemini returned no text (finishReason={reason}, likely ran out of tokens during thinking)")
+                    text = parts[0]["text"]
                     truncated = candidate.get("finishReason") == "MAX_TOKENS"
                     return text, truncated
                 except Exception as me:
@@ -760,9 +767,15 @@ def _call_cerebras(messages, system_prompt, max_tokens):
                     )
                     resp.raise_for_status()
                     data = resp.json()
+                    message = data["choices"][0]["message"]
+                    if "content" not in message or message["content"] is None:
+                        # Reasoning model (gpt-oss) burned the whole token budget on
+                        # internal reasoning and never emitted a final answer.
+                        reason = data["choices"][0].get("finish_reason", "unknown")
+                        raise Exception(f"Cerebras returned no content (finish_reason={reason}, likely ran out of tokens during reasoning)")
                     truncated = data["choices"][0].get("finish_reason") == "length"
                     print(f"Cerebras model used: {model}")
-                    return data["choices"][0]["message"]["content"], truncated
+                    return message["content"], truncated
                 except Exception as me:
                     if "404" in str(me) or "not found" in str(me).lower() or "model" in str(me).lower():
                         print(f"Cerebras model {model} not found, trying next...")
@@ -1968,7 +1981,7 @@ async def providers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             continue
         start = datetime.now()
         try:
-            result, _truncated = fn(test_msg, "You are a test bot.", 10)
+            result, _truncated = fn(test_msg, "You are a test bot.", 60)
             ms = int((datetime.now() - start).total_seconds() * 1000)
             preview = (result or "").strip()[:30]
             lines.append(f"✅ {name}: working ({ms}ms) → \"{preview}\"")
