@@ -8,10 +8,10 @@ import requests
 from datetime import datetime
 from dotenv import load_dotenv
 from groq import Groq
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
-    filters, ContextTypes, ConversationHandler
+    filters, ContextTypes, ConversationHandler, CallbackQueryHandler
 )
 
 load_dotenv()
@@ -42,6 +42,7 @@ JOKE_SYSTEM_PROMPT      = load_txt("joke_prompt.txt")
 QUIZ_SYSTEM_PROMPT      = load_txt("quiz_prompt.txt")
 SUMMARIZE_SYSTEM_PROMPT = load_txt("summarize_prompt.txt")
 SEARCH_SYSTEM_PROMPT    = load_txt("search_prompt.txt")
+BANTER_SYSTEM_PROMPT    = load_txt("banter_prompt.txt")
 
 # ── Tokens ────────────────────────────────────────────────
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -185,9 +186,11 @@ if OWNER_ID: print(f"Owner ID: {OWNER_ID}")
 #  create index if not exists idx_user_memory_user_id on user_memory(user_id);
 
 MAX_SAVED_HISTORY = 20   # how many messages to persist (same as in-memory MAX_HISTORY)
+MAX_LIKED_NOTES   = 15   # how many 👍'd answer summaries to keep per user
 
 def _sb_save_user_memory(user_id: int, first_name: str = "", username: str = "",
                           history: list = None, ask_history: list = None,
+                          liked_notes: list = None,
                           level: str = "", score: int = 0, total: int = 0) -> None:
     """Upsert full user state into Supabase user_memory table — non-blocking fire-and-forget."""
     if not (SUPABASE_URL and SUPABASE_KEY):
@@ -216,6 +219,8 @@ def _sb_save_user_memory(user_id: int, first_name: str = "", username: str = "",
                 {"role": m["role"], "content": m["content"][:600]}
                 for m in trimmed_ask
             ])
+        if liked_notes is not None:
+            payload["liked_notes"] = _json.dumps(liked_notes[-MAX_LIKED_NOTES:])
         headers = _supabase_headers()
         headers["Prefer"] = "resolution=merge-duplicates,return=minimal"
         requests.post(
@@ -242,7 +247,7 @@ def _sb_load_user_memory(user_id: int) -> dict:
             return {}
         row = rows[0]
         # Deserialize JSON columns
-        for key in ("history", "ask_history"):
+        for key in ("history", "ask_history", "liked_notes"):
             val = row.get(key)
             if isinstance(val, str):
                 try:
@@ -261,13 +266,20 @@ def load_user_into_memory(user_id: int, first_name: str = "", username: str = ""
     """
     Called once per user on their first message/command in a session.
     Restores their conversation history + profile from Supabase into in-memory dicts.
+    ALL features (chat, /ask, /brainy) now share ONE unified history (user_conversations)
+    so context carries across every entry point — that used to be split into two silos.
     """
     if user_id in user_conversations:
         return   # already loaded this session
     row = _sb_load_user_memory(user_id)
-    # Restore conversation histories
-    user_conversations[user_id] = row.get("history") or []
-    ask_conversations[user_id]  = row.get("ask_history") or []
+    # Restore unified conversation history. Old saves may still have a separate
+    # ask_history column from before the unification — merge it in once so nobody's
+    # past /ask context gets silently dropped.
+    history = row.get("history") or []
+    legacy_ask_history = row.get("ask_history") or []
+    if legacy_ask_history and not history:
+        history = legacy_ask_history
+    user_conversations[user_id] = history
     # Restore profile / progress data
     if user_id not in user_data_store:
         user_data_store[user_id] = {
@@ -275,12 +287,14 @@ def load_user_into_memory(user_id: int, first_name: str = "", username: str = ""
             "score":  row.get("score") or 0,
             "total":  row.get("total") or 0,
             "joined": datetime.now().strftime("%d %b %Y"),
+            "liked_notes": row.get("liked_notes") or [],
         }
     if row:
         d = user_data_store[user_id]
         d["level"] = row.get("level") or d.get("level") or ""
         d["score"] = row.get("score") or d.get("score") or 0
         d["total"] = row.get("total") or d.get("total") or 0
+        d["liked_notes"] = row.get("liked_notes") or d.get("liked_notes") or []
         restored = len(user_conversations[user_id])
         if restored:
             print(f"[memory] restored {restored} messages for user {user_id} ({first_name})")
@@ -290,16 +304,15 @@ def save_user_memory_async(user_id: int) -> None:
     """Fire-and-forget: saves current in-memory state for user_id to Supabase."""
     import threading
     data = user_data_store.get(user_id, {})
-    u    = user_data_store.get(user_id, {})
     threading.Thread(
         target=_sb_save_user_memory,
         kwargs=dict(
-            user_id    = user_id,
-            history    = user_conversations.get(user_id, []),
-            ask_history= ask_conversations.get(user_id, []),
-            level      = data.get("level", ""),
-            score      = data.get("score", 0),
-            total      = data.get("total", 0),
+            user_id     = user_id,
+            history     = user_conversations.get(user_id, []),
+            liked_notes = data.get("liked_notes", []),
+            level       = data.get("level", ""),
+            score       = data.get("score", 0),
+            total       = data.get("total", 0),
         ),
         daemon=True
     ).start()
@@ -553,14 +566,29 @@ def web_search(query: str, max_results: int = 5) -> str:
 #   GLOBAL STATE
 
 MAINTENANCE_MODE        = False
-user_conversations      = {}   # /brainy & direct chat history (20 msgs = 10 exchanges)
-ask_conversations       = {}   # /ask command history (10 msgs = 5 exchanges)
+user_conversations      = {}   # UNIFIED history for chat + /ask + /brainy (20 msgs = 10 exchanges)
 user_data_store         = {}
 interaction_log         = []   # Saved interactions for AI learning context
-MAX_HISTORY             = 20   # brainy: 20 messages (10 exchanges)
-MAX_ASK_HISTORY         = 10   # ask: 10 messages (5 exchanges)
+MAX_HISTORY             = 20   # 20 messages (10 exchanges)
 MAX_INTERACTION_LOG     = 100  # Keep last 100 saved interactions for learning
 CHOOSING_LEVEL          = 1
+
+# 👍/👎 feedback: message_id → {"user_id", "question", "answer"}. Bounded so it
+# can't grow forever — oldest entries are evicted once the cap is hit.
+from collections import OrderedDict
+pending_feedback     = OrderedDict()
+MAX_PENDING_FEEDBACK  = 500
+
+def _remember_feedback_target(message_id: int, user_id: int, question: str, answer: str) -> None:
+    pending_feedback[message_id] = {"user_id": user_id, "question": question, "answer": answer}
+    while len(pending_feedback) > MAX_PENDING_FEEDBACK:
+        pending_feedback.popitem(last=False)  # evict oldest
+
+def _feedback_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("👍", callback_data="fb_up"),
+        InlineKeyboardButton("👎", callback_data="fb_down"),
+    ]])
 
 key_idx = {"groq": 0, "nvidia": 0, "deepseek": 0, "gemini": 0, "tavily": 0, "cerebras": 0, "openrouter": 0, "sambanova": 0, "together": 0}
 
@@ -950,6 +978,41 @@ GK_KEYWORDS = [
     "current affairs", "news", "award", "winner", "founded", "ai", "model", "gpt", "chatgpt"
 ]
 
+# ── Off-topic banter detection ──────────────────────────────
+# Anything that isn't study-related and reads like casual chit-chat switches
+# the bot to BANTER_SYSTEM_PROMPT (funnier, looser tone) instead of the serious
+# study persona. Sensitive topics are always excluded from this — never joke there.
+STUDY_TOPIC_KEYWORDS = NUMERICAL_KEYWORDS + GK_KEYWORDS + [
+    "physics", "chemistry", "maths", "math", "biology", "bio",
+    "jee", "neet", "gujcet", "cet", "exam", "syllabus", "chapter", "ncert",
+    "organic", "inorganic", "mechanics", "thermodynamics", "electrostatics",
+    "optics", "trigonometry", "calculus", "algebra", "genetics", "ecology",
+    "periodic table", "mole", "atom", "molecule", "reaction",
+    "study", "revision", "quiz", "practice", "concept", "topic", "subject",
+    "homework", "assignment", "explain", "define", "class 11", "class 12",
+    "board exam", "marks", "percentage", "rank", "college", "admission",
+    "level", "doubt", "question paper", "mock test", "formula"
+]
+
+SENSITIVE_KEYWORDS = [
+    "sad", "depress", "suicide", "kill myself", "die", "death", "crying", "cry",
+    "hurt", "breakup", "alone", "lonely", "hate myself", "worthless", "anxiety",
+    "panic", "stressed", "stress", "give up", "tired of life", "no one cares",
+    "self harm", "udaas", "akela", "rona", "dukhi", "pareshan"
+]
+
+def is_offtopic_chat(text: str) -> bool:
+    """True when a message looks like casual chit-chat rather than a study question —
+    short, no academic keywords, not a sensitive/emotional topic (never joke there)."""
+    t = text.lower().strip()
+    if not t or len(t.split()) > 18:
+        return False
+    if any(k in t for k in SENSITIVE_KEYWORDS):
+        return False
+    if any(k in t for k in STUDY_TOPIC_KEYWORDS):
+        return False
+    return True
+
 def detect_question_type(messages) -> str:
     last_msg = ""
     for m in reversed(messages):
@@ -1328,14 +1391,9 @@ def is_owner(update: Update) -> bool:
     return update.effective_user.id == OWNER_ID
 
 def trim_history(user_id):
-    """Keep only last MAX_HISTORY messages for brainy/chat (20 = 10 exchanges)"""
+    """Keep only last MAX_HISTORY messages (20 = 10 exchanges) - unified for chat/ask/brainy"""
     if user_id in user_conversations:
         user_conversations[user_id] = user_conversations[user_id][-MAX_HISTORY:]
-
-def trim_ask_history(user_id):
-    """Keep only last MAX_ASK_HISTORY messages for /ask (10 = 5 exchanges)"""
-    if user_id in ask_conversations:
-        ask_conversations[user_id] = ask_conversations[user_id][-MAX_ASK_HISTORY:]
 
 def save_interaction(user_id: int, question: str, answer: str, source: str = "chat"):
     """Save a Q&A interaction to the global learning log"""
@@ -1360,6 +1418,18 @@ def get_learning_context(limit: int = 5) -> str:
     for e in recent:
         lines.append(f"Q: {e['q'][:120]}")
         lines.append(f"A: {e['a'][:200]}")
+    return "\n".join(lines)
+
+def get_liked_context(user_id: int, limit: int = 5) -> str:
+    """Build a personal context string from this user's 👍'd answers — their own
+    explicit positive feedback, so the bot leans toward what THIS user found helpful."""
+    notes = user_data_store.get(user_id, {}).get("liked_notes") or []
+    if not notes:
+        return ""
+    recent = notes[-limit:]
+    lines = ["This student previously gave a 👍 (thumbs up) to these answers — they found this style/topic genuinely helpful, lean into it when relevant:"]
+    for n in recent:
+        lines.append(f"- {n[:160]}")
     return "\n".join(lines)
 
 def get_user_data(user_id):
@@ -1443,23 +1513,31 @@ async def _run_ai(update: Update, messages: list, system_prompt: str, max_tok: i
             await asyncio.sleep(0.6)   # slower animation = fewer Telegram edit-rate-limit hits
         result = await ai_task
         result = clean_response(result)
+        keyboard = _feedback_keyboard()
+        last_user_msg = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+        sent_msg = None
 
         # INSTANT: edit the loading message directly with the answer (saves 2 roundtrips)
         if len(result) <= 4096:
             try:
-                await loading_msg.edit_text(result)
+                sent_msg = await loading_msg.edit_text(result, reply_markup=keyboard)
             except Exception:
                 # edit failed (e.g. same text) — fall back to delete+send
                 await loading_msg.delete()
-                await send(update, result)
+                sent_msg = await update.message.reply_text(result, reply_markup=keyboard)
         else:
-            # Long answer: delete loading, send in chunks
+            # Long answer: delete loading, send in chunks — buttons go on the final chunk
             await loading_msg.delete()
-            await send(update, result)
+            chunks = [result[i:i+4000] for i in range(0, len(result), 4000)]
+            for i, chunk in enumerate(chunks):
+                is_last = (i == len(chunks) - 1)
+                sent_msg = await update.message.reply_text(chunk, reply_markup=keyboard if is_last else None)
+
+        if sent_msg is not None and last_user_msg:
+            _remember_feedback_target(sent_msg.message_id, update.effective_user.id, last_user_msg, result)
 
         print(f"✅ Sent to {update.effective_user.id} via {source}")
         # Save interaction for learning
-        last_user_msg = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
         if last_user_msg and result:
             save_interaction(update.effective_user.id, last_user_msg, result, source)
         return result
@@ -1483,8 +1561,8 @@ async def process_ask(update: Update, question: str):
     # ── Restore from Supabase if first message this session ──
     load_user_into_memory(user_id, first_name, username)
 
-    if user_id not in ask_conversations:
-        ask_conversations[user_id] = []
+    if user_id not in user_conversations:
+        user_conversations[user_id] = []
     data = get_user_data(user_id)
     level = data.get("level")
     level_ctx = f"\nStudent ka level: {level}." if level else ""
@@ -1504,11 +1582,11 @@ async def process_ask(update: Update, question: str):
     if user_ctx_parts:
         prompt = prompt + "\n\n" + "\n".join(user_ctx_parts)
 
-    ask_conversations[user_id].append({"role": "user", "content": question + level_ctx})
-    trim_ask_history(user_id)
-    result = await _run_ai(update, ask_conversations[user_id], prompt, max_tok, source="ask")
+    user_conversations[user_id].append({"role": "user", "content": question + level_ctx})
+    trim_history(user_id)
+    result = await _run_ai(update, user_conversations[user_id], prompt, max_tok, source="ask")
     if result:
-        ask_conversations[user_id].append({"role": "assistant", "content": result})
+        user_conversations[user_id].append({"role": "assistant", "content": result})
         # ── Persist to Supabase async (non-blocking) ─────────
         save_user_memory_async(user_id)
 
@@ -1516,48 +1594,71 @@ async def process_brainy(update: Update, question: str):
     if is_abusing_owner(question):
         await roast_abuser(update)
         return
-    user_id = update.effective_user.id
-    if user_id not in user_conversations:
-        user_conversations[user_id] = []
+    user_id    = update.effective_user.id
+    first_name = update.effective_user.first_name or ""
+    username   = update.effective_user.username or ""
+
+    # ── Restore from Supabase if first message this session ──
+    load_user_into_memory(user_id, first_name, username)
+
     data = get_user_data(user_id)
     level = data.get("level")
     level_ctx = f"\nStudent ka level: {level}." if level else ""
     user_conversations[user_id].append({"role": "user", "content": question + level_ctx})
     trim_history(user_id)
 
-    # Inject learning context into brainy prompt
-    learn_ctx = get_learning_context(3)
+    # Inject learning context + this user's own liked-answer memory into brainy prompt
+    learn_ctx  = get_learning_context(3)
+    liked_ctx  = get_liked_context(user_id, 3)
     brainy_prompt = BRAINY_SYSTEM_PROMPT
-    if learn_ctx:
-        brainy_prompt = brainy_prompt + "\n\n" + learn_ctx
+    extra = "\n\n".join(c for c in (learn_ctx, liked_ctx) if c)
+    if extra:
+        brainy_prompt = brainy_prompt + "\n\n" + extra
 
     result = await _run_ai(update, user_conversations[user_id], brainy_prompt, 1000, source="brainy")
     if result:
         user_conversations[user_id].append({"role": "assistant", "content": result})
+        save_user_memory_async(user_id)
 
 async def process_query(update: Update, question: str, system_prompt=None):
-    user_id = update.effective_user.id
-    if user_id not in user_conversations:
-        user_conversations[user_id] = []
+    user_id    = update.effective_user.id
+    first_name = update.effective_user.first_name or ""
+    username   = update.effective_user.username or ""
+
+    # ── Restore from Supabase if first message this session ──
+    load_user_into_memory(user_id, first_name, username)
+
     if is_abusing_owner(question):
         await roast_abuser(update)
         return
     data = get_user_data(user_id)
     level = data.get("level")
     level_ctx = f"\nStudent ka level: {level}." if level else ""
-    base_prompt = GROUP_SYSTEM_PROMPT if is_group(update) else (system_prompt or SYSTEM_PROMPT)
+
+    if is_group(update):
+        base_prompt = GROUP_SYSTEM_PROMPT
+    elif system_prompt:
+        base_prompt = system_prompt
+    elif is_offtopic_chat(question):
+        # Casual chit-chat, not a study question → funnier off-topic persona
+        base_prompt = BANTER_SYSTEM_PROMPT or SYSTEM_PROMPT
+    else:
+        base_prompt = SYSTEM_PROMPT
     max_tok = 250 if is_group(update) else None   # None = ai_call picks smart limit per question type
 
-    # Inject learning context
+    # Inject learning context + this user's own liked-answer memory
     learn_ctx = get_learning_context(5)
-    if learn_ctx:
-        base_prompt = base_prompt + "\n\n" + learn_ctx
+    liked_ctx = get_liked_context(user_id, 5)
+    extra = "\n\n".join(c for c in (learn_ctx, liked_ctx) if c)
+    if extra:
+        base_prompt = base_prompt + "\n\n" + extra
 
     user_conversations[user_id].append({"role": "user", "content": question + level_ctx})
     trim_history(user_id)
     result = await _run_ai(update, user_conversations[user_id], base_prompt, max_tok, source="query")
     if result:
         user_conversations[user_id].append({"role": "assistant", "content": result})
+        save_user_memory_async(user_id)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #   IMAGE HANDLER
@@ -1951,7 +2052,9 @@ async def maintenance_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await maintenance_guard(update):
         return
-    user_conversations[update.effective_user.id] = []
+    user_id = update.effective_user.id
+    user_conversations[user_id] = []
+    save_user_memory_async(user_id)   # persist the clear, so it survives a restart too
     await send(update, "🗑️ Conversation cleared!\n💬 Start a fresh topic anytime!")
 
 
@@ -2319,8 +2422,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user_id = update.effective_user.id
-    if user_id not in user_conversations:
-        user_conversations[user_id] = []
+    # ── Restore from Supabase if first message this session ──
+    # (Was previously just blind-initializing user_conversations[user_id] = [] here,
+    # which made load_user_into_memory's "already loaded" guard skip restoring real
+    # history forever in this process — saved context never came back after a restart.)
+    load_user_into_memory(user_id, update.effective_user.first_name or "", update.effective_user.username or "")
     data = get_user_data(user_id)
 
     # Formula subject selection
