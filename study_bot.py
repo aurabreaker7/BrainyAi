@@ -43,6 +43,11 @@ QUIZ_SYSTEM_PROMPT      = load_txt("quiz_prompt.txt")
 SUMMARIZE_SYSTEM_PROMPT = load_txt("summarize_prompt.txt")
 SEARCH_SYSTEM_PROMPT    = load_txt("search_prompt.txt")
 BANTER_SYSTEM_PROMPT    = load_txt("banter_prompt.txt")
+TRANSLATE_SYSTEM_PROMPT = load_txt("translate_prompt.txt")
+DEFINE_SYSTEM_PROMPT    = load_txt("define_prompt.txt")
+MOTIVATE_SYSTEM_PROMPT  = load_txt("motivate_prompt.txt")
+PLAN_SYSTEM_PROMPT      = load_txt("plan_prompt.txt")
+ASK5_SYSTEM_PROMPT      = load_txt("ask5_prompt.txt")
 
 # ── Tokens ────────────────────────────────────────────────
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -2412,7 +2417,7 @@ async def translate_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     loading_msg = await update.message.reply_text(THINKING_DOTS[0])
     loop = asyncio.get_event_loop()
-    ai_task = loop.run_in_executor(None, lambda: ai_call([{"role": "user", "content": prompt}], max_tokens=400))
+    ai_task = loop.run_in_executor(None, lambda: ai_call([{"role": "user", "content": prompt}], TRANSLATE_SYSTEM_PROMPT, 400))
     try:
         dot = 1
         while not ai_task.done():
@@ -2452,7 +2457,7 @@ async def define_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     loading_msg = await update.message.reply_text(THINKING_DOTS[0])
     loop = asyncio.get_event_loop()
-    ai_task = loop.run_in_executor(None, lambda: ai_call([{"role": "user", "content": prompt}], max_tokens=350))
+    ai_task = loop.run_in_executor(None, lambda: ai_call([{"role": "user", "content": prompt}], DEFINE_SYSTEM_PROMPT, 350))
     try:
         dot = 1
         while not ai_task.done():
@@ -2494,7 +2499,7 @@ async def motivate_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     loading_msg = await update.message.reply_text("💪 Loading motivation...")
     loop = asyncio.get_event_loop()
-    ai_task = loop.run_in_executor(None, lambda: ai_call([{"role": "user", "content": prompt}], max_tokens=250))
+    ai_task = loop.run_in_executor(None, lambda: ai_call([{"role": "user", "content": prompt}], MOTIVATE_SYSTEM_PROMPT, 250))
     try:
         dot = 1
         while not ai_task.done():
@@ -2554,7 +2559,7 @@ async def myplan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     loading_msg = await update.message.reply_text(THINKING_DOTS[0])
     loop = asyncio.get_event_loop()
-    ai_task = loop.run_in_executor(None, lambda: ai_call([{"role": "user", "content": prompt}], max_tokens=1000))
+    ai_task = loop.run_in_executor(None, lambda: ai_call([{"role": "user", "content": prompt}], PLAN_SYSTEM_PROMPT, 1000))
     try:
         dot = 1
         while not ai_task.done():
@@ -2623,7 +2628,7 @@ async def ask5_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "5. Memory trick (how to never forget this)\n\n"
         "Hinglish tone. Plain text, no markdown asterisks."
     )
-    await _run_ai(update, [{"role": "user", "content": prompt}], BRAINY_SYSTEM_PROMPT, 1200, source="ask5")
+    await _run_ai(update, [{"role": "user", "content": prompt}], ASK5_SYSTEM_PROMPT, 1200, source="ask5")
 
 
 
