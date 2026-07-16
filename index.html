@@ -10,18 +10,20 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
     <style>
 :root {
-    --bg-primary: #0d1117;
-    --bg-secondary: #161b22;
-    --bg-tertiary: #21262d;
-    --border-color: #30363d;
-    --text-primary: #c9d1d9;
-    --text-secondary: #8b949e;
-    --text-muted: #484f58;
-    --accent-color: #58a6ff;
-    --accent-glow: rgba(88, 166, 255, 0.15);
-    --success-color: #3fb950;
-    --error-color: #f85149;
-    --warning-color: #d29922;
+    --bg-primary: #0b0a14;
+    --bg-secondary: #14111f;
+    --bg-tertiary: #1c1830;
+    --border-color: #322a4d;
+    --text-primary: #ede7f6;
+    --text-secondary: #a89bc9;
+    --text-muted: #5f5480;
+    --accent-color: #e8b339;
+    --accent-glow: rgba(232, 179, 57, 0.16);
+    --aura-color: #9d6fff;
+    --aura-glow: rgba(157, 111, 255, 0.18);
+    --success-color: #4ade80;
+    --error-color: #fb7185;
+    --warning-color: #e8b339;
     --sidebar-width: 280px;
     --header-height: 60px;
     --transition-speed: 0.3s;
@@ -131,6 +133,21 @@ body {
     margin-bottom: 10px;
 }
 
+/* ── SIGNATURE BRAND MARK: pulsing aura rings, gold → violet ── */
+.brand-mark {
+    display: inline-block;
+    animation: aura-breathe 3.2s infinite ease-in-out;
+}
+.brand-mark.sm { width: 28px; height: 28px; }
+.brand-mark.md { width: 40px; height: 40px; }
+.brand-mark.lg { width: 56px; height: 56px; margin-bottom: 10px; }
+.brand-mark.xl { width: 72px; height: 72px; margin-bottom: 12px; }
+
+@keyframes aura-breathe {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 0 6px rgba(232, 179, 57, 0.35)); }
+    50% { transform: scale(1.06); filter: drop-shadow(0 0 14px rgba(157, 111, 255, 0.45)); }
+}
+
 .login-header h1 {
     font-family: 'Outfit', sans-serif;
     font-size: 32px;
@@ -176,9 +193,9 @@ body {
 }
 
 .btn-primary:hover {
-    background-color: #79b8ff;
+    background-color: #f2c657;
     transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(88, 166, 255, 0.3);
+    box-shadow: 0 6px 20px rgba(232, 179, 57, 0.3);
 }
 
 .btn-primary:active {
@@ -466,6 +483,12 @@ body {
 .btn-icon-only:hover {
     background-color: var(--border-color);
     transform: translateY(-1px);
+    color: var(--accent-color);
+}
+
+.btn-icon-only svg {
+    width: 16px;
+    height: 16px;
 }
 
 /* ── CHAT CONTAINER ── */
@@ -578,7 +601,7 @@ body {
 }
 
 .message-row.assistant .message-avatar {
-    background-color: rgba(88, 166, 255, 0.1);
+    background-color: rgba(232, 179, 57, 0.1);
     border: 1px solid var(--accent-color);
     color: var(--accent-color);
 }
@@ -719,11 +742,20 @@ body {
     transform: translateY(-2px);
 }
 
+.suggestion-card .card-icon {
+    width: 20px;
+    height: 20px;
+    color: var(--aura-color);
+    margin-bottom: 8px;
+    display: block;
+}
+
 .suggestion-card h3 {
+    font-family: 'Outfit', sans-serif;
     font-size: 13.5px;
     font-weight: 600;
     margin-bottom: 4px;
-    color: var(--accent-color);
+    color: var(--text-primary);
 }
 
 .suggestion-card p {
@@ -822,7 +854,7 @@ body {
 
 .input-form-wrapper:focus-within {
     border-color: var(--accent-color);
-    box-shadow: 0 4px 24px rgba(88, 166, 255, 0.1);
+    box-shadow: 0 4px 24px rgba(232, 179, 57, 0.1);
 }
 
 .input-form-wrapper textarea {
@@ -871,7 +903,7 @@ body {
 }
 
 .send-message-btn:hover {
-    background-color: #79b8ff;
+    background-color: #f2c657;
     transform: scale(1.05);
 }
 
@@ -951,9 +983,8 @@ body {
 }
 
 .profile-avatar-large {
-    font-size: 54px;
-    text-align: center;
-    margin-bottom: 20px;
+    display: block !important;
+    margin: 0 auto 20px !important;
 }
 
 .profile-fields {
@@ -1100,8 +1131,15 @@ body {
     <!-- Loading overlay -->
     <div id="loading-overlay" class="overlay">
         <div class="spinner-container">
-            <div class="brain-spinner">🧠</div>
-            <p>Initializing BRAINY...</p>
+            <svg class="brand-mark xl" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="24" cy="24" r="21" stroke="url(#aura1)" stroke-width="1.5" opacity="0.5"/>
+                <circle cx="24" cy="24" r="14" stroke="url(#aura1)" stroke-width="1.5" opacity="0.8"/>
+                <circle cx="24" cy="24" r="5" fill="url(#aura1)"/>
+                <defs><linearGradient id="aura1" x1="0" y1="0" x2="48" y2="48">
+                    <stop offset="0" stop-color="#e8b339"/><stop offset="1" stop-color="#9d6fff"/>
+                </linearGradient></defs>
+            </svg>
+            <p>Jaag rahi hai BRAINY...</p>
         </div>
     </div>
 
@@ -1109,22 +1147,31 @@ body {
     <div id="login-container" class="login-wrapper hidden">
         <div class="login-card">
             <div class="login-header">
-                <span class="logo-icon">🧠</span>
+                <svg class="brand-mark lg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="24" cy="24" r="21" stroke="url(#aura2)" stroke-width="1.5" opacity="0.5"/>
+                    <circle cx="24" cy="24" r="14" stroke="url(#aura2)" stroke-width="1.5" opacity="0.8"/>
+                    <circle cx="24" cy="24" r="5" fill="url(#aura2)"/>
+                    <defs><linearGradient id="aura2" x1="0" y1="0" x2="48" y2="48">
+                        <stop offset="0" stop-color="#e8b339"/><stop offset="1" stop-color="#9d6fff"/>
+                    </linearGradient></defs>
+                </svg>
                 <h1>𝗕𝗥𝗔𝗜𝗡𝗬</h1>
-                <p>Your Advanced AI Assistant</p>
+                <p>Study companion. Zero sugarcoating.</p>
             </div>
             <div class="login-body">
-                <p class="login-desc">Sign in with your Telegram account to access your chat history, custom memory, and stats.</p>
+                <p class="login-desc">Telegram se sign in kar — apni chat history, memory aur stats sab yahin milega.</p>
                 <button id="tg-login-btn" class="btn btn-primary btn-lg">
-                    <span class="btn-icon">💬</span> Login via Telegram
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right:8px;vertical-align:-4px">
+                        <path d="M21.5 4.5L2.5 11.8C1.6 12.1 1.6 12.9 2.5 13.2L7.3 14.8L18.6 7.6C19.1 7.3 19.6 7.4 19.2 7.8L10.2 16.1L9.9 20.8C10.3 20.8 10.5 20.6 10.8 20.3L13.3 17.9L18.2 21.5C19.1 22 19.7 21.7 19.9 20.7L22.9 6.1C23.2 4.8 22.5 4.1 21.5 4.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+                    </svg> Login via Telegram
                 </button>
                 <div id="desktop-login-status" class="login-status hidden">
                     <div class="pulse-loader"></div>
-                    <p>Open the chat in Telegram and verify the login request...</p>
+                    <p>Telegram mein bot khol aur login request verify kar...</p>
                 </div>
             </div>
             <div class="login-footer">
-                <p>Powered by Advanced LLM Rotation</p>
+                <p>8 AI providers routed into one brain</p>
             </div>
         </div>
     </div>
@@ -1143,11 +1190,18 @@ body {
         <aside id="sidebar" class="sidebar-container">
             <div class="sidebar-header">
                 <div class="sidebar-logo">
-                    <span class="logo-icon">🧠</span>
+                    <svg class="brand-mark sm" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="24" cy="24" r="21" stroke="url(#aura3)" stroke-width="1.5" opacity="0.5"/>
+                        <circle cx="24" cy="24" r="14" stroke="url(#aura3)" stroke-width="1.5" opacity="0.8"/>
+                        <circle cx="24" cy="24" r="5" fill="url(#aura3)"/>
+                        <defs><linearGradient id="aura3" x1="0" y1="0" x2="48" y2="48">
+                            <stop offset="0" stop-color="#e8b339"/><stop offset="1" stop-color="#9d6fff"/>
+                        </linearGradient></defs>
+                    </svg>
                     <h2>𝗕𝗥𝗔𝗜𝗡𝗬</h2>
                 </div>
                 <button id="new-chat-btn" class="btn btn-secondary btn-new-chat">
-                    <span class="plus-icon">+</span> New Chat
+                    <span class="plus-icon">+</span> Nayi Chat
                 </button>
             </div>
 
@@ -1169,9 +1223,9 @@ body {
                     </div>
                 </div>
                 <div class="footer-actions">
-                    <button id="account-btn" class="btn-icon-only" title="Account Details">👤</button>
-                    <button id="memory-btn" class="btn-icon-only" title="Custom Memory">💾</button>
-                    <button id="logout-btn" class="btn-icon-only" title="Logout">🚪</button>
+                    <button id="account-btn" class="btn-icon-only" title="Account Details"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="8" r="3.2" stroke="currentColor" stroke-width="1.6"/><path d="M5 20c1-3.5 4-5 7-5s6 1.5 7 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+                    <button id="memory-btn" class="btn-icon-only" title="Custom Memory"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3c-3 0-5 2-5 4.5 0 1.4.6 2.3 1.5 3.2C7.5 11.8 7 12.8 7 14c0 2.2 1.8 4 4 4h1M12 3c3 0 5 2 5 4.5 0 1.4-.6 2.3-1.5 3.2.9 1.1 1.5 2.1 1.5 3.3 0 2.2-1.8 4-4 4h-1M12 3v15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                    <button id="logout-btn" class="btn-icon-only" title="Logout"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                 </div>
             </div>
         </aside>
@@ -1191,26 +1245,37 @@ body {
             <div id="chat-messages-container" class="messages-viewport">
                 <!-- Welcome Prompt (Shown on empty chat) -->
                 <div id="welcome-prompt" class="welcome-container">
-                    <span class="welcome-brain">🧠</span>
-                    <h1>Namaste! How can I help you today?</h1>
-                    <p>Ask anything, write code, translate languages, or search for creative answers.</p>
+                    <svg class="brand-mark lg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="24" cy="24" r="21" stroke="url(#aura4)" stroke-width="1.5" opacity="0.5"/>
+                        <circle cx="24" cy="24" r="14" stroke="url(#aura4)" stroke-width="1.5" opacity="0.8"/>
+                        <circle cx="24" cy="24" r="5" fill="url(#aura4)"/>
+                        <defs><linearGradient id="aura4" x1="0" y1="0" x2="48" y2="48">
+                            <stop offset="0" stop-color="#e8b339"/><stop offset="1" stop-color="#9d6fff"/>
+                        </linearGradient></defs>
+                    </svg>
+                    <h1>Bol, kya samajhna hai aaj?</h1>
+                    <p>Concept, code, ya bas thoda push chahiye — jo bhi ho, seedha bata.</p>
                     
                     <div class="welcome-suggestions">
-                        <div class="suggestion-card" onclick="handleSuggestion('Summarize the concept of quantum computing')">
-                            <h3>📝 Summarize</h3>
-                            <p>Summarize complex topics or articles</p>
+                        <div class="suggestion-card" onclick="handleSuggestion('Ye concept ek simple analogy ke saath samjha do: quantum computing')">
+                            <svg class="card-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6.3 6.3L4.9 4.9M19.1 19.1l-1.4-1.4M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="1.6"/></svg>
+                            <h3>Concept samjhao</h3>
+                            <p>Koi bhi topic — clear, tod ke, bina jargon ke</p>
                         </div>
-                        <div class="suggestion-card" onclick="handleSuggestion('Define Web3 with a simple analogy')">
-                            <h3>📖 Define</h3>
-                            <p>Get clear definitions of any concept</p>
+                        <div class="suggestion-card" onclick="handleSuggestion('JEE ke liye is chapter ke important formulas ek list mein de do')">
+                            <svg class="card-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 19V6a2 2 0 012-2h8l6 6v9a2 2 0 01-2 2H6a2 2 0 01-2-2z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M14 4v5h5M8 13h8M8 17h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                            <h3>Formula sheet</h3>
+                            <p>Quick revision ke liye ready-to-use notes</p>
                         </div>
-                        <div class="suggestion-card" onclick="handleSuggestion('Write a Python function to check for primes')">
-                            <h3>💻 Code</h3>
-                            <p>Write, debug, or optimize code snippets</p>
+                        <div class="suggestion-card" onclick="handleSuggestion('Ek Python function likh do jo prime number check kare')">
+                            <svg class="card-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 18l-6-6 6-6M15 6l6 6-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            <h3>Code likho</h3>
+                            <p>Likh, debug kar, ya optimize kar — kuch bhi</p>
                         </div>
-                        <div class="suggestion-card" onclick="handleSuggestion('Give me 5 productivity tips for remote work')">
-                            <h3>💡 Brainstorm</h3>
-                            <p>Get creative insights, advice, and tips</p>
+                        <div class="suggestion-card" onclick="handleSuggestion('Aaj mann nahi lag raha padhne mein — ek real push chahiye')">
+                            <svg class="card-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+                            <h3>Push chahiye</h3>
+                            <p>Discipline over motivation — real talk</p>
                         </div>
                     </div>
                 </div>
@@ -1234,8 +1299,8 @@ body {
             <!-- Bottom Chat Input Panel -->
             <footer class="chat-input-container">
                 <div id="limit-reached-banner" class="limit-banner hidden">
-                    <span>🔒 This chat hit its 50-message limit.</span>
-                    <button id="limit-new-chat-btn" class="btn-limit-newchat">Start New Chat</button>
+                    <span>Is chat ka 50-message limit khatam. Nayi chat shuru kar.</span>
+                    <button id="limit-new-chat-btn" class="btn-limit-newchat">Nayi Chat</button>
                 </div>
                 <div class="input-form-wrapper">
                     <textarea id="chat-input" placeholder="Ask BRAINY anything..." rows="1"></textarea>
@@ -1246,7 +1311,7 @@ body {
                     </button>
                 </div>
                 <div class="input-disclaimer">
-                    BRAINY v8.0. Dynamic intent routing enabled. Responds in user's language.
+                    BRAINY v8.0 — jis language mein baat karega, usi mein jawab dega.
                 </div>
             </footer>
         </main>
@@ -1256,11 +1321,18 @@ body {
     <div id="account-modal" class="modal-wrapper hidden">
         <div class="modal-card">
             <div class="modal-header">
-                <h2>👤 User Profile</h2>
+                <h2><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align:-3px;margin-right:6px"><circle cx="12" cy="8" r="3.2" stroke="currentColor" stroke-width="1.6"/><path d="M5 20c1-3.5 4-5 7-5s6 1.5 7 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg> Profile</h2>
                 <button class="close-modal-btn">&times;</button>
             </div>
             <div class="modal-body">
-                <div class="profile-avatar-large">🧠</div>
+                <svg class="brand-mark md profile-avatar-large" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="24" cy="24" r="21" stroke="url(#aura5)" stroke-width="1.5" opacity="0.5"/>
+                    <circle cx="24" cy="24" r="14" stroke="url(#aura5)" stroke-width="1.5" opacity="0.8"/>
+                    <circle cx="24" cy="24" r="5" fill="url(#aura5)"/>
+                    <defs><linearGradient id="aura5" x1="0" y1="0" x2="48" y2="48">
+                        <stop offset="0" stop-color="#e8b339"/><stop offset="1" stop-color="#9d6fff"/>
+                    </linearGradient></defs>
+                </svg>
                 <div class="profile-fields">
                     <div class="profile-field">
                         <span class="field-label">Name</span>
@@ -1295,14 +1367,14 @@ body {
     <div id="memory-modal" class="modal-wrapper hidden">
         <div class="modal-card">
             <div class="modal-header">
-                <h2>💾 Personalized Memory</h2>
+                <h2><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align:-3px;margin-right:6px"><path d="M12 3c-3 0-5 2-5 4.5 0 1.4.6 2.3 1.5 3.2C7.5 11.8 7 12.8 7 14c0 2.2 1.8 4 4 4h1M12 3c3 0 5 2 5 4.5 0 1.4-.6 2.3-1.5 3.2.9 1.1 1.5 2.1 1.5 3.3 0 2.2-1.8 4-4 4h-1M12 3v15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Memory</h2>
                 <button class="close-modal-btn">&times;</button>
             </div>
             <div class="modal-body">
                 <p class="modal-description">This is the context and preferences BRAINY gathers from your chats and liked notes to customize future responses.</p>
                 
                 <div class="memory-section">
-                    <h3>💡 Learned Insights Context</h3>
+                    <h3>Learned Context</h3>
                     <div class="memory-box" id="memory-learn-context">
                         Loading your context and preferences...
                     </div>
@@ -1570,7 +1642,7 @@ function renderSessionsList(sessions) {
 
         const deleteBtn = document.createElement("button");
         deleteBtn.className = "btn-history-action";
-        deleteBtn.innerHTML = "🗑️";
+        deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 7h16M9 7V4.5a1 1 0 011-1h4a1 1 0 011 1V7M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
         deleteBtn.onclick = (e) => {
             e.stopPropagation();
             deleteSession(sess.id);
