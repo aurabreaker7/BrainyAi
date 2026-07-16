@@ -2106,23 +2106,33 @@ def is_abusing_owner(text: str) -> bool:
     t = text.lower()
     return any(w in t for w in ABUSE_KEYWORDS) and any(n in t for n in OWNER_NAMES)
 
-async def send(update: Update, text: str):
-    """Send a message with HTML parse_mode for <code> blocks. Falls back to plain text on parse failure."""
+async def send(update: Update, text: str, reply_markup=None):
+    """Send a message with HTML parse_mode for <code> blocks. Falls back to plain text on parse failure.
+
+    reply_markup is only attached to the LAST chunk when a message is long
+    enough to be split — Telegram doesn't allow the same InlineKeyboardMarkup
+    object to usefully appear on multiple messages, and it belongs on the
+    final one (e.g. the mini-app button after the /start welcome text).
+    """
     _has_html = "<code>" in text or "<pre>" in text
     _parse = "HTML" if _has_html else None
     try:
         if len(text) > 4000:
-            for i in range(0, len(text), 4000):
-                await update.message.reply_text(text[i:i+4000], parse_mode=_parse)
+            chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
+            for i, chunk in enumerate(chunks):
+                is_last = i == len(chunks) - 1
+                await update.message.reply_text(chunk, parse_mode=_parse, reply_markup=reply_markup if is_last else None)
         else:
-            await update.message.reply_text(text, parse_mode=_parse)
+            await update.message.reply_text(text, parse_mode=_parse, reply_markup=reply_markup)
     except Exception:
         # HTML parse failed (unclosed tags etc.) — fall back to plain text
         if len(text) > 4000:
-            for i in range(0, len(text), 4000):
-                await update.message.reply_text(text[i:i+4000])
+            chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
+            for i, chunk in enumerate(chunks):
+                is_last = i == len(chunks) - 1
+                await update.message.reply_text(chunk, reply_markup=reply_markup if is_last else None)
         else:
-            await update.message.reply_text(text)
+            await update.message.reply_text(text, reply_markup=reply_markup)
 
 async def safe_edit(msg, text: str):
     try:
@@ -2568,6 +2578,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_conversations[user_id] = []
     get_user_data(user_id)
     supabase_register_user(user_id, "private", update.effective_user.username or "", user_name or "")
+
+    web_url = os.getenv("WEB_APP_URL", "https://brainyai.up.railway.app")
+    launch_keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🚀 Try the BRAINY Mini App", web_app=WebAppInfo(url=web_url))]
+    ])
+
     await send(update,
         f"⚡ 𝗡𝗮𝗺𝗮𝘀𝘁𝗲, {user_name}! ⚡\n\n"
         "🤖 I'm 𝗕𝗥𝗔𝗜𝗡𝗬 — Your Personal AI Study Partner!\n"
@@ -2605,6 +2621,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🗑️ /clear     — Reset chat history\n"
         "ℹ️ /about     — About the bot\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "👇 Or just tap below to jump straight into the full app:",
+        reply_markup=launch_keyboard
     )
     print(f"User started: {user_name} ({user_id})")
 
