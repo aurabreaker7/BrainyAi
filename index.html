@@ -37,6 +37,10 @@
 
 body {
     background-color: var(--bg-primary);
+    background-image:
+        radial-gradient(ellipse 900px 500px at 15% -5%, rgba(157, 111, 255, 0.10), transparent 60%),
+        radial-gradient(ellipse 700px 500px at 100% 100%, rgba(232, 179, 57, 0.07), transparent 60%);
+    background-attachment: fixed;
     color: var(--text-primary);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
     font-size: 15px;
@@ -116,15 +120,25 @@ body {
 }
 
 .login-card {
-    background: rgba(22, 27, 34, 0.7);
+    position: relative;
+    background: rgba(20, 17, 31, 0.7);
     border: 1px solid var(--border-color);
     border-radius: 20px;
     width: 100%;
     max-width: 440px;
-    padding: 40px;
+    padding: 44px 40px 40px;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
     backdrop-filter: blur(8px);
     text-align: center;
+    overflow: hidden;
+}
+
+.login-card::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent-color), var(--aura-color));
 }
 
 .logo-icon {
@@ -150,17 +164,18 @@ body {
 
 .login-header h1 {
     font-family: 'Outfit', sans-serif;
-    font-size: 32px;
+    font-size: 26px;
     font-weight: 700;
-    letter-spacing: 1px;
+    letter-spacing: 6px;
     color: var(--text-primary);
-    margin-bottom: 5px;
+    margin-bottom: 6px;
 }
 
 .login-header p {
     color: var(--text-secondary);
     font-size: 14px;
     margin-bottom: 30px;
+    letter-spacing: 0.2px;
 }
 
 .login-desc {
@@ -304,9 +319,9 @@ body {
 
 .sidebar-logo h2 {
     font-family: 'Outfit', sans-serif;
-    font-size: 20px;
+    font-size: 16px;
     font-weight: 700;
-    letter-spacing: 0.5px;
+    letter-spacing: 3px;
 }
 
 .btn-secondary {
@@ -727,6 +742,7 @@ body {
 }
 
 .suggestion-card {
+    position: relative;
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: 12px;
@@ -734,6 +750,22 @@ body {
     text-align: left;
     cursor: pointer;
     transition: all 0.2s ease;
+    overflow: hidden;
+}
+
+.suggestion-card::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent-color), var(--aura-color));
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.suggestion-card:hover::before {
+    opacity: 1;
 }
 
 .suggestion-card:hover {
@@ -1139,7 +1171,7 @@ body {
                     <stop offset="0" stop-color="#e8b339"/><stop offset="1" stop-color="#9d6fff"/>
                 </linearGradient></defs>
             </svg>
-            <p>Jaag rahi hai BRAINY...</p>
+            <p>Waking BRAINY up...</p>
         </div>
     </div>
 
@@ -1155,11 +1187,11 @@ body {
                         <stop offset="0" stop-color="#e8b339"/><stop offset="1" stop-color="#9d6fff"/>
                     </linearGradient></defs>
                 </svg>
-                <h1>𝗕𝗥𝗔𝗜𝗡𝗬</h1>
+                <h1>BRAINY</h1>
                 <p>Study companion. Zero sugarcoating.</p>
             </div>
             <div class="login-body">
-                <p class="login-desc">Telegram se sign in kar — apni chat history, memory aur stats sab yahin milega.</p>
+                <p class="login-desc">Sign in with Telegram to pick up your chat history, memory, and stats.</p>
                 <button id="tg-login-btn" class="btn btn-primary btn-lg">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right:8px;vertical-align:-4px">
                         <path d="M21.5 4.5L2.5 11.8C1.6 12.1 1.6 12.9 2.5 13.2L7.3 14.8L18.6 7.6C19.1 7.3 19.6 7.4 19.2 7.8L10.2 16.1L9.9 20.8C10.3 20.8 10.5 20.6 10.8 20.3L13.3 17.9L18.2 21.5C19.1 22 19.7 21.7 19.9 20.7L22.9 6.1C23.2 4.8 22.5 4.1 21.5 4.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
@@ -1167,7 +1199,7 @@ body {
                 </button>
                 <div id="desktop-login-status" class="login-status hidden">
                     <div class="pulse-loader"></div>
-                    <p>Telegram mein bot khol aur login request verify kar...</p>
+                    <p>Open the bot in Telegram and confirm the login request...</p>
                 </div>
             </div>
             <div class="login-footer">
@@ -1198,10 +1230,10 @@ body {
                             <stop offset="0" stop-color="#e8b339"/><stop offset="1" stop-color="#9d6fff"/>
                         </linearGradient></defs>
                     </svg>
-                    <h2>𝗕𝗥𝗔𝗜𝗡𝗬</h2>
+                    <h2>BRAINY</h2>
                 </div>
                 <button id="new-chat-btn" class="btn btn-secondary btn-new-chat">
-                    <span class="plus-icon">+</span> Nayi Chat
+                    <span class="plus-icon">+</span> New Chat
                 </button>
             </div>
 
@@ -1253,28 +1285,28 @@ body {
                             <stop offset="0" stop-color="#e8b339"/><stop offset="1" stop-color="#9d6fff"/>
                         </linearGradient></defs>
                     </svg>
-                    <h1>Bol, kya samajhna hai aaj?</h1>
-                    <p>Concept, code, ya bas thoda push chahiye — jo bhi ho, seedha bata.</p>
+                    <h1>What are we figuring out today?</h1>
+                    <p>Concept, code, or just a push in the right direction — say it straight.</p>
                     
                     <div class="welcome-suggestions">
-                        <div class="suggestion-card" onclick="handleSuggestion('Ye concept ek simple analogy ke saath samjha do: quantum computing')">
+                        <div class="suggestion-card" onclick="handleSuggestion('Explain quantum computing with a simple analogy')">
                             <svg class="card-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6.3 6.3L4.9 4.9M19.1 19.1l-1.4-1.4M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="1.6"/></svg>
-                            <h3>Concept samjhao</h3>
-                            <p>Koi bhi topic — clear, tod ke, bina jargon ke</p>
+                            <h3>Explain a concept</h3>
+                            <p>Any topic, broken down clearly — no jargon</p>
                         </div>
-                        <div class="suggestion-card" onclick="handleSuggestion('JEE ke liye is chapter ke important formulas ek list mein de do')">
+                        <div class="suggestion-card" onclick="handleSuggestion('Give me a quick formula sheet for this chapter')">
                             <svg class="card-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 19V6a2 2 0 012-2h8l6 6v9a2 2 0 01-2 2H6a2 2 0 01-2-2z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M14 4v5h5M8 13h8M8 17h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
                             <h3>Formula sheet</h3>
-                            <p>Quick revision ke liye ready-to-use notes</p>
+                            <p>Ready-to-use notes for a quick revision</p>
                         </div>
-                        <div class="suggestion-card" onclick="handleSuggestion('Ek Python function likh do jo prime number check kare')">
+                        <div class="suggestion-card" onclick="handleSuggestion('Write a Python function to check if a number is prime')">
                             <svg class="card-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 18l-6-6 6-6M15 6l6 6-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                            <h3>Code likho</h3>
-                            <p>Likh, debug kar, ya optimize kar — kuch bhi</p>
+                            <h3>Write code</h3>
+                            <p>Write, debug, or optimize — anything</p>
                         </div>
-                        <div class="suggestion-card" onclick="handleSuggestion('Aaj mann nahi lag raha padhne mein — ek real push chahiye')">
+                        <div class="suggestion-card" onclick="handleSuggestion('I don\'t feel like studying today — give me a real push, no sugarcoating')">
                             <svg class="card-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
-                            <h3>Push chahiye</h3>
+                            <h3>Need a push</h3>
                             <p>Discipline over motivation — real talk</p>
                         </div>
                     </div>
@@ -1299,8 +1331,8 @@ body {
             <!-- Bottom Chat Input Panel -->
             <footer class="chat-input-container">
                 <div id="limit-reached-banner" class="limit-banner hidden">
-                    <span>Is chat ka 50-message limit khatam. Nayi chat shuru kar.</span>
-                    <button id="limit-new-chat-btn" class="btn-limit-newchat">Nayi Chat</button>
+                    <span>This chat hit its 50-message limit. Start a new one to keep going.</span>
+                    <button id="limit-new-chat-btn" class="btn-limit-newchat">New Chat</button>
                 </div>
                 <div class="input-form-wrapper">
                     <textarea id="chat-input" placeholder="Ask BRAINY anything..." rows="1"></textarea>
@@ -1311,7 +1343,7 @@ body {
                     </button>
                 </div>
                 <div class="input-disclaimer">
-                    BRAINY v8.0 — jis language mein baat karega, usi mein jawab dega.
+                    BRAINY v2.0 — replies in whatever language you write in.
                 </div>
             </footer>
         </main>
