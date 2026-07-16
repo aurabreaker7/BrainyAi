@@ -659,6 +659,8 @@ body {
     max-width: 85%;
     font-size: 14.5px;
     line-height: 1.6;
+    white-space: pre-wrap;  /* preserve \n line breaks and blank-line paragraph gaps */
+    overflow-wrap: break-word; /* long unbroken words/URLs don't blow out the layout */
 }
 
 .message-row.user .message-bubble {
