@@ -20,7 +20,16 @@ from security import (
 )
 
 app = Flask(__name__)
-CORS(app, supports_credentials=True)
+
+# CORS: with supports_credentials=True, browsers reject a wildcard origin anyway —
+# but being explicit avoids accidentally trusting arbitrary sites with cookie-bearing
+# requests. Set ALLOWED_ORIGINS on Railway as a comma-separated list, e.g.
+# "https://taskboard7.up.railway.app". Falls back to allow-all for local dev.
+_allowed_origins = os.getenv("ALLOWED_ORIGINS")
+if _allowed_origins:
+    CORS(app, supports_credentials=True, origins=[o.strip() for o in _allowed_origins.split(",")])
+else:
+    CORS(app, supports_credentials=True)
 # IMPORTANT: set a real FLASK_SECRET_KEY env var on Railway. This key signs the session
 # cookie. The cookie only ever holds a user_id — never a password or token — and Flask
 # marks it HttpOnly by default, so it can't be read by page JS or stashed in
@@ -34,6 +43,36 @@ app.config["PERMANENT_SESSION_LIFETIME"] = 86400  # 24 hours
 @app.after_request
 def apply_security_headers(response):
     return security_headers(response)
+
+
+# ── GLOBAL ERROR HANDLERS ──
+# Flask's default error pages are HTML. The frontend always does
+# `response.json()` on API calls — an HTML error page makes that throw a
+# JSON-parse error instead of the actual message, and shows up as a
+# confusing "Network error" toast. These force every error path to return
+# JSON so the frontend's existing apiRequest/error handling works correctly.
+
+@app.errorhandler(404)
+def handle_404(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Not found"}), 404
+    return e  # let static/frontend routes fall through normally
+
+@app.errorhandler(500)
+def handle_500(e):
+    log_security_event("server_error", request.remote_addr or "unknown", session.get("user_id"), str(e)[:200])
+    return jsonify({"error": "Something went wrong on our end. Please try again."}), 500
+
+@app.errorhandler(Exception)
+def handle_uncaught(e):
+    # Catches anything that isn't already a handled HTTP error (DB errors,
+    # provider timeouts, etc.) so a crash never leaks a stack trace or HTML
+    # to the client — it always gets a clean JSON error it can toast.
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return e
+    log_security_event("uncaught_exception", request.remote_addr or "unknown", session.get("user_id"), str(e)[:200])
+    return jsonify({"error": "Unexpected error. Please try again."}), 500
 
 SUPABASE_URL = study_bot.SUPABASE_URL
 SUPABASE_KEY = study_bot.SUPABASE_KEY
