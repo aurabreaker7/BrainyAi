@@ -167,7 +167,7 @@ This project is configured for easy deployment on PaaS providers like Railway or
   <li>Timestamp of chat, or time when user started the bot.</li>
   <li>Your poll responses are stored.</li>
 </ul>
-<b>**MYTHS:-</b> We do not store, log, or collect any of your sensitive information or personal data, because no sensitive data ever enters or rests on our systems, there is no data to leak or breach. All data is processed in real-time and immediately discarded after use.
+<b>MYTHS:-</b> We do not store, log, or collect any of your sensitive information or personal data, because no sensitive data ever enters or rests on our systems, there is no data to leak or breach. All data is processed in real-time and immediately discarded after use.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ## 📬 Contact & Links
