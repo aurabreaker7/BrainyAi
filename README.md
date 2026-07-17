@@ -7,14 +7,14 @@
     <a href="https://t.me/aurabreaker7"><img src="https://img.shields.io/badge/Telegram-Channel-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram Channel"></a>
   </p>
 
-  <p><strong>A multi-provider AI assistant with a ChatGPT-style web interface and Telegram Mini App integration.</strong></p>
+  <p><strong>A multi-provider AI assistant with a BRAINY-style web interface and Telegram Mini App integration.</strong></p>
 </div>
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ## 📝 Project Description
 
-**BRAINY** is an advanced, multi-provider AI assistant designed primarily as a study companion. It seamlessly bridges a feature-rich Telegram Bot with a modern, ChatGPT-style web interface. Powered by an intelligent routing system, BRAINY automatically directs user queries to the best-suited AI provider among 10+ integrations (including Groq, Gemini, DeepSeek, Cerebras, OpenAI, Mistral, OpenRouter, SambaNova, Together, and Nvidia).
+**BRAINY** is an advanced, multi-provider AI assistant designed primarily as a study companion. It seamlessly bridges a feature-rich Telegram Bot with a modern, Brainy-style web interface. Powered by an intelligent routing system, BRAINY automatically directs user queries to the best-suited AI provider among 10+ integrations (including Groq, Gemini, DeepSeek, Cerebras, OpenAI, Mistral, OpenRouter, SambaNova, Together, and Nvidia).
 
 Whether you need deep explanations for physics concepts, real-time web search, interactive flashcards, or just a quick joke, BRAINY handles it all natively through natural language intent detection.
 
@@ -119,7 +119,7 @@ pip install -r requirements.txt
 Create a `.env` file in the root directory and add your keys (refer to the `.env.example` if available). Minimum required keys:
 ```env
 TELEGRAM_TOKEN=your_bot_token
-GROQ_API_KEY_1=your_groq_key
+YOUR_AI_API_KEY=your_ai_api_key
 FLASK_SECRET_KEY=your_secure_random_string
 SUPABASE_URL=your_supabase_url
 SUPABASE_SERVICE_KEY=your_supabase_service_key
@@ -161,7 +161,13 @@ This project is configured for easy deployment on PaaS providers like Railway or
 ## ⚠️ Disclaimer
 
 **Personal Project:** This project was created for educational purposes, API testing, and personal skill development. It is **not intended for commercial or business use**. It is open-sourced purely for learning purposes.
-
+**DATA WE STORE:-** <ul>
+  <li>Telegram username-id - to assign and verify session id for web.</li>
+  <li>Your chats are end-to-end encrypted, and are stored in hash values.</li>
+  <li>Timestamp of chat, or time when user started the bot.</li>
+  <li>Your poll responses are stored.</li>
+</ul>
+<b>**MYTHS:-</b> We do not store, log, or collect any of your sensitive information or personal data, because no sensitive data ever enters or rests on our systems, there is no data to leak or breach. All data is processed in real-time and immediately discarded after use.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ## 📬 Contact & Links
