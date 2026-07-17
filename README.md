@@ -170,7 +170,7 @@ This project is configured for easy deployment on PaaS providers like Railway or
   <li>Your IP is stored for the timeinterval you use BRAINY to apply rate limits, it is instantly removed from the databsae after closing the web.</li>
 </ul>
 <br>
-<b>We do not store, log, or collect any of your sensitive information or personal data, because no sensitive data ever enters or rests on our systems, there is no data to leak or breach. All data is processed in real-time and immediately discarded after use. No data is stored when user chats in telegram private chat.</b>
+<b>We do not store, log, or collect any of your sensitive information or personal data, because no sensitive data ever enters or rests on our systems, there is no data to leak or breach. All data is processed in real-time and immediately discarded after use. No user messages are stored when user chats in telegram private chat.</b>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 <br>
 <p>⭐ Show Your Support
