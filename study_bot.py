@@ -2313,7 +2313,7 @@ async def roast_abuser(update: Update):
 #   CORE QUERY PROCESSORS
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-async def _run_ai(update: Update, messages: list, system_prompt: str, max_tok: int, source: str = "chat"):
+async def _run_ai(update: Update, messages: list, system_prompt: str, max_tok: int, source: str = "chat", suppress_feedback: bool = False):
     # Send loading message immediately — user sees response in <100ms
     loading_msg = await update.message.reply_text(THINKING_DOTS[0])
     loop = asyncio.get_event_loop()
@@ -2326,7 +2326,7 @@ async def _run_ai(update: Update, messages: list, system_prompt: str, max_tok: i
             await asyncio.sleep(0.6)   # slower animation = fewer Telegram edit-rate-limit hits
         result = await ai_task
         result = clean_response(result)
-        keyboard = _feedback_keyboard()
+        keyboard = None if suppress_feedback else _feedback_keyboard()
         last_user_msg = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
         sent_msg = None
 
@@ -2419,7 +2419,7 @@ async def process_ask(update: Update, question: str):
         # ── Persist to Supabase async (non-blocking) ─────────
         save_user_memory_async(user_id)
 
-async def process_brainy(update: Update, question: str):
+async def process_brainy(update: Update, question: str, suppress_feedback: bool = False):
     if is_abusing_owner(question):
         await roast_abuser(update)
         return
@@ -2444,12 +2444,12 @@ async def process_brainy(update: Update, question: str):
     if extra:
         brainy_prompt = brainy_prompt + "\n\n" + extra
 
-    result = await _run_ai(update, user_conversations[user_id], brainy_prompt, 1000, source="brainy")
+    result = await _run_ai(update, user_conversations[user_id], brainy_prompt, 1000, source="brainy", suppress_feedback=suppress_feedback)
     if result:
         user_conversations[user_id].append({"role": "assistant", "content": result})
         save_user_memory_async(user_id)
 
-async def process_query(update: Update, question: str, system_prompt=None):
+async def process_query(update: Update, question: str, system_prompt=None, suppress_feedback: bool = False):
     user_id    = update.effective_user.id
     first_name = update.effective_user.first_name or ""
     username   = update.effective_user.username or ""
@@ -2473,23 +2473,23 @@ async def process_query(update: Update, question: str, system_prompt=None):
             print(f"Routing query via intent: {intent}")
             if intent == "joke":
                 prompt = "Tell one genuinely funny joke — preferably a science, programming, or Hinglish wordplay joke."
-                await _run_ai(update, [{"role": "user", "content": prompt}], JOKE_SYSTEM_PROMPT, 150, source="joke")
+                await _run_ai(update, [{"role": "user", "content": prompt}], JOKE_SYSTEM_PROMPT, 150, source="joke", suppress_feedback=suppress_feedback)
                 return
             elif intent == "fact":
                 categories = ["science", "space", "human body", "history", "technology and AI", "mathematics", "psychology"]
                 category = random.choice(categories)
                 prompt = f"Give one mind-blowing lesser-known fact about {category}."
-                await _run_ai(update, [{"role": "user", "content": prompt}], FACT_SYSTEM_PROMPT, 200, source="fact")
+                await _run_ai(update, [{"role": "user", "content": prompt}], FACT_SYSTEM_PROMPT, 200, source="fact", suppress_feedback=suppress_feedback)
                 return
             elif intent == "tip":
                 prompt = "Give one powerful study or productivity tip for a JEE/NEET/CET student. Make it practical and actionable."
-                await _run_ai(update, [{"role": "user", "content": prompt}], TIP_SYSTEM_PROMPT, 250, source="tip")
+                await _run_ai(update, [{"role": "user", "content": prompt}], TIP_SYSTEM_PROMPT, 250, source="tip", suppress_feedback=suppress_feedback)
                 return
             elif intent == "define":
                 word = payload or question
                 user_conversations[user_id].append({"role": "user", "content": question + level_ctx})
                 trim_history(user_id)
-                result = await _run_ai(update, user_conversations[user_id], DEFINE_SYSTEM_PROMPT, 350, source="define")
+                result = await _run_ai(update, user_conversations[user_id], DEFINE_SYSTEM_PROMPT, 350, source="define", suppress_feedback=suppress_feedback)
                 if result:
                     user_conversations[user_id].append({"role": "assistant", "content": result})
                     save_user_memory_async(user_id)
@@ -2497,7 +2497,7 @@ async def process_query(update: Update, question: str, system_prompt=None):
             elif intent == "summarize":
                 user_conversations[user_id].append({"role": "user", "content": question + level_ctx})
                 trim_history(user_id)
-                result = await _run_ai(update, user_conversations[user_id], SUMMARIZE_SYSTEM_PROMPT, 500, source="summarize")
+                result = await _run_ai(update, user_conversations[user_id], SUMMARIZE_SYSTEM_PROMPT, 500, source="summarize", suppress_feedback=suppress_feedback)
                 if result:
                     user_conversations[user_id].append({"role": "assistant", "content": result})
                     save_user_memory_async(user_id)
@@ -2505,7 +2505,7 @@ async def process_query(update: Update, question: str, system_prompt=None):
             elif intent == "translate":
                 user_conversations[user_id].append({"role": "user", "content": question + level_ctx})
                 trim_history(user_id)
-                result = await _run_ai(update, user_conversations[user_id], TRANSLATE_SYSTEM_PROMPT, 400, source="translate")
+                result = await _run_ai(update, user_conversations[user_id], TRANSLATE_SYSTEM_PROMPT, 400, source="translate", suppress_feedback=suppress_feedback)
                 if result:
                     user_conversations[user_id].append({"role": "assistant", "content": result})
                     save_user_memory_async(user_id)
@@ -2528,7 +2528,7 @@ async def process_query(update: Update, question: str, system_prompt=None):
                     f"{context_hint}\n"
                     "Make it punchy, real, personal — not generic quotes. Mix English + Hinglish. 5-7 lines max."
                 )
-                await _run_ai(update, [{"role": "user", "content": prompt}], MOTIVATE_SYSTEM_PROMPT, 250, source="motivate")
+                await _run_ai(update, [{"role": "user", "content": prompt}], MOTIVATE_SYSTEM_PROMPT, 250, source="motivate", suppress_feedback=suppress_feedback)
                 return
             elif intent == "search":
                 query = payload or question
@@ -2559,7 +2559,7 @@ async def process_query(update: Update, question: str, system_prompt=None):
                     await loading_msg.delete()
                     user_conversations[user_id].append({"role": "user", "content": f"Search details for: {query}"})
                     trim_history(user_id)
-                    result = await _run_ai(update, user_conversations[user_id], SEARCH_SYSTEM_PROMPT, 600, source="search")
+                    result = await _run_ai(update, user_conversations[user_id], SEARCH_SYSTEM_PROMPT, 600, source="search", suppress_feedback=suppress_feedback)
                     if result:
                         user_conversations[user_id].append({"role": "assistant", "content": result})
                         save_user_memory_async(user_id)
@@ -2572,7 +2572,7 @@ async def process_query(update: Update, question: str, system_prompt=None):
                     await send(update, "❌ Search failed. Try again!")
                 return
             elif intent == "brainy":
-                await process_brainy(update, payload or question)
+                await process_brainy(update, payload or question, suppress_feedback=suppress_feedback)
                 return
 
     # Default flow (fallback if no intent matched or system_prompt specified)
@@ -2596,7 +2596,7 @@ async def process_query(update: Update, question: str, system_prompt=None):
 
     user_conversations[user_id].append({"role": "user", "content": question + level_ctx})
     trim_history(user_id)
-    result = await _run_ai(update, user_conversations[user_id], base_prompt, max_tok, source="query")
+    result = await _run_ai(update, user_conversations[user_id], base_prompt, max_tok, source="query", suppress_feedback=suppress_feedback)
     if result:
         user_conversations[user_id].append({"role": "assistant", "content": result})
         save_user_memory_async(user_id)
@@ -4140,7 +4140,7 @@ WEB_KEYWORDS = [
     "web link", "website", "mini app", "web app", "open in web",
     "web pe", "website link", "app link", "browser mein",
     "web version", "online", "web par", "web url",
-    "web address", "site link", "open website",
+    "web address", "site link", "open website", "web link do", "mini",
 ]
 
 def is_asking_for_web(text: str) -> bool:
@@ -4240,13 +4240,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     wants_web_link = is_asking_for_web(msg_text)
 
     await msg.chat.send_action("typing")
-    await process_query(update, msg_text)
+    await process_query(update, msg_text, suppress_feedback=wants_web_link)
 
     # ── AFTER process_query(): non-forced web link suggestion ──
     # If user explicitly asked for the web link/site/mini app, send it as an
     # inline button — in addition to (not instead of) the normal answer above.
     if wants_web_link:
-        web_url = os.getenv("WEB_APP_URL", "https://brainyai.up.railway.app")
+        web_url = os.getenv("WEB_APP_URL", "https://brainyai.up.railway.app/")
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🌐 Open BRAINY Web App", web_app=WebAppInfo(url=web_url))],
             [InlineKeyboardButton("🔗 Copy Link", url=web_url)]
