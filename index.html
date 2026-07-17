@@ -13,6 +13,7 @@
     --bg-primary: #0b0a14;
     --bg-secondary: #14111f;
     --bg-tertiary: #1c1830;
+    --bg-elevated: #221c38;
     --border-color: #322a4d;
     --text-primary: #ede7f6;
     --text-secondary: #a89bc9;
@@ -27,6 +28,13 @@
     --sidebar-width: 280px;
     --header-height: 60px;
     --transition-speed: 0.3s;
+    /* Premium accents — layered gold/purple gradient + soft glow shadows */
+    --accent-gradient: linear-gradient(135deg, #e8b339 0%, #d99b2b 100%);
+    --aura-gradient: linear-gradient(135deg, #9d6fff 0%, #7c4fe0 100%);
+    --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.35);
+    --shadow-md: 0 10px 34px rgba(0, 0, 0, 0.45);
+    --shadow-glow-gold: 0 4px 20px rgba(232, 179, 57, 0.25);
+    --shadow-glow-aura: 0 4px 24px rgba(157, 111, 255, 0.22);
 }
 
 * {
@@ -296,6 +304,7 @@ body {
     width: var(--sidebar-width);
     background-color: var(--bg-secondary);
     border-right: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -322,6 +331,10 @@ body {
     font-size: 16px;
     font-weight: 700;
     letter-spacing: 3px;
+    background: linear-gradient(135deg, var(--accent-color), var(--aura-color));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
 }
 
 .btn-secondary {
@@ -664,10 +677,11 @@ body {
 }
 
 .message-row.user .message-bubble {
-    background-color: var(--bg-secondary);
+    background: linear-gradient(145deg, var(--bg-elevated), var(--bg-secondary));
     border: 1px solid var(--border-color);
     padding: 12px 18px;
     border-radius: 18px 18px 2px 18px;
+    box-shadow: var(--shadow-sm);
 }
 
 .message-row.assistant .message-bubble {
@@ -956,8 +970,8 @@ body {
 }
 
 .send-message-btn {
-    background-color: var(--accent-color);
-    color: #0d1117;
+    background: var(--accent-gradient);
+    color: #17130a;
     border: none;
     border-radius: 10px;
     width: 44px;
@@ -968,11 +982,13 @@ body {
     cursor: pointer;
     transition: all 0.2s ease;
     flex-shrink: 0;
+    box-shadow: var(--shadow-glow-gold);
 }
 
 .send-message-btn:hover {
-    background-color: #f2c657;
+    filter: brightness(1.08);
     transform: scale(1.05);
+    box-shadow: 0 6px 26px rgba(232, 179, 57, 0.35);
 }
 
 .send-message-btn svg {
@@ -1577,15 +1593,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Mobile Sidebar Toggle
     sidebarToggle.addEventListener("click", () => {
-        sidebar.classList.toggle("open");
-        sidebarBackdrop.classList.toggle("open");
+        sidebar.classList.contains("open") ? closeSidebar() : openSidebar();
     });
 
     // Tap outside sidebar (on backdrop) to close it
-    sidebarBackdrop.addEventListener("click", () => {
-        sidebar.classList.remove("open");
-        sidebarBackdrop.classList.remove("open");
-    });
+    sidebarBackdrop.addEventListener("click", closeSidebar);
 
     // New Chat Click
     newChatBtn.addEventListener("click", startNewChat);
@@ -1788,6 +1800,16 @@ function renderSessionsList(sessions) {
     });
 }
 
+function closeSidebar() {
+    sidebar.classList.remove("open");
+    sidebarBackdrop.classList.remove("open");
+}
+
+function openSidebar() {
+    sidebar.classList.add("open");
+    sidebarBackdrop.classList.add("open");
+}
+
 async function startNewChat() {
     try {
         const resp = await fetch("/api/sessions", {
@@ -1813,8 +1835,8 @@ async function selectSession(sessionId, title) {
     activeSessionId = sessionId;
     activeChatTitle.innerText = title;
 
-    // Close mobile sidebar if open
-    sidebar.classList.remove("open");
+    // Close mobile sidebar (and its backdrop) if open
+    closeSidebar();
 
     // Update active highlight class
     document.querySelectorAll(".history-item").forEach(item => {
