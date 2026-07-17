@@ -51,7 +51,43 @@ MOTIVATE_SYSTEM_PROMPT  = load_txt("motivate_prompt.txt")
 PLAN_SYSTEM_PROMPT      = load_txt("plan_prompt.txt")
 ASK5_SYSTEM_PROMPT      = load_txt("ask5_prompt.txt")
 
-# ── Tokens ────────────────────────────────────────────────
+SYSTEM_PROMPT += """
+
+RESPONSE FORMATTING RULES:
+1. Use **clear structure** in every response:
+   → Start with a **direct answer** (1-2 lines, no "Sure!" or "Great question!")
+   → Then break it down with **bullet points** (use → or • or numbers)
+   → Add **examples** in a separate line
+   → End with a **one-line takeaway** or **memory hook**
+
+2. For definitions:
+   → 📖 DEFINITION: [one line]
+   → 🔍 KEY POINTS: [3-4 bullet points]
+   → 💡 EXAMPLE: [real-world example]
+   → 🎯 EXAM TIP: [what examiners test]
+
+3. For numerical problems:
+   → 📥 GIVEN: [list values]
+   → 📐 FORMULA: [write formula]
+   → 🔢 SOLUTION: [step-by-step]
+   → ✅ ANSWER: [final answer with units]
+
+4. For concepts:
+   → 🧠 CORE IDEA: [one-line summary]
+   → 🔬 HOW IT WORKS: [mechanism in 2-3 points]
+   → 🌍 REAL-WORLD: [analogy]
+   → ⚠️ COMMON MISTAKE: [what students get wrong]
+   → 📝 EXAM ANGLE: [how it's asked]
+
+5. For comparisons:
+   → Feature | BRAINY | Other
+   → ---------|--------|-------
+   → Speed | Fast | Slow
+
+6. NEVER output just one big paragraph — always break it down.
+"""
+
+# ── Tokens 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
@@ -81,23 +117,6 @@ if not TELEGRAM_TOKEN or not GROQ_API_KEYS:
 print(f"Groq: {len(GROQ_API_KEYS)} | Nvidia: {len(NVIDIA_API_KEYS)} | Deepseek: {len(DEEPSEEK_API_KEYS)} | Gemini: {len(GEMINI_API_KEYS)} | Tavily: {len(TAVILY_API_KEYS)} | Cerebras: {len(CEREBRAS_API_KEYS)} | OpenRouter: {len(OPENROUTER_API_KEYS)} | SambaNova: {len(SAMBANOVA_API_KEYS)} | Together: {len(TOGETHER_API_KEYS)} | Mistral: {len(MISTRAL_API_KEYS)} | OpenAI: {len(OPENAI_API_KEYS)}")
 print(f"Supabase: {'connected' if (SUPABASE_URL and SUPABASE_KEY) else 'NOT configured — broadcast list wont persist'}")
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#   SUPABASE — persistent user registry for /broadcast
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Table schema (run once in Supabase SQL editor):
-#
-#   create table bot_users (
-#     chat_id     bigint primary key,
-#     chat_type   text default 'private',   -- 'private' or 'group'
-#     username    text,
-#     first_name  text,
-#     joined_at   timestamptz default now(),
-#     last_seen   timestamptz default now()
-#   );
-#
-# Uses the service_role key (server-side only) so RLS doesn't block writes.
-# All calls are wrapped in try/except — if Supabase is down or not configured,
-# the bot keeps working normally, it just can't persist/broadcast to users.
 
 def _supabase_headers() -> dict:
     return {
@@ -173,33 +192,9 @@ def supabase_user_count() -> int:
         return 0
     except Exception:
         return 0
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
 #   SUPABASE — native quiz polls + per-chat leaderboard
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Table schema (run once in Supabase SQL editor, alongside the tables above):
-#
-#   create table quiz_polls (
-#     poll_id            text primary key,
-#     chat_id            bigint not null,
-#     correct_option_id  int not null,
-#     subject            text,
-#     created_at         timestamptz default now()
-#   );
-#
-#   create table quiz_scores (
-#     chat_id         bigint not null,
-#     user_id         bigint not null,
-#     username        text,
-#     correct_count   int default 0,
-#     total_answered  int default 0,
-#     updated_at      timestamptz default now(),
-#     primary key (chat_id, user_id)
-#   );
-#
-# Same non-fatal, fire-and-forget philosophy as the rest of this file — if
-# Supabase is down or unconfigured, quiz polls still work in-session via the
-# in-memory caches above, they just won't survive a restart / can't be
-# looked up from a different process.
+
 
 def sb_save_quiz_poll(poll_id: str, chat_id: int, correct_option_id: int, subject: str) -> None:
     if not (SUPABASE_URL and SUPABASE_KEY):
@@ -330,26 +325,8 @@ def record_quiz_answer(chat_id: int, user_id: int, username: str, is_correct: bo
 
 if OWNER_ID: print(f"Owner ID: {OWNER_ID}")
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 #   PERSISTENT MEMORY — Supabase conversation history
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#
-#  Run this SQL in Supabase ONCE to enable persistent memory:
-#
-#  create table if not exists user_memory (
-#    user_id      bigint primary key,
-#    first_name   text    default '',
-#    username     text    default '',
-#    level        text    default '',
-#    score        int     default 0,
-#    total        int     default 0,
-#    joined_at    timestamptz default now(),
-#    history      jsonb   default '[]'::jsonb,   -- last 20 messages
-#    ask_history  jsonb   default '[]'::jsonb,   -- last 10 /ask messages
-#    updated_at   timestamptz default now()
-#  );
-#
-#  create index if not exists idx_user_memory_user_id on user_memory(user_id);
 
 MAX_SAVED_HISTORY = 20   # how many messages to persist (same as in-memory MAX_HISTORY)
 MAX_LIKED_NOTES   = 15   # how many 👍'd answer summaries to keep per user
@@ -438,9 +415,7 @@ def load_user_into_memory(user_id: int, first_name: str = "", username: str = ""
     if user_id in user_conversations:
         return   # already loaded this session
     row = _sb_load_user_memory(user_id)
-    # Restore unified conversation history. Old saves may still have a separate
-    # ask_history column from before the unification — merge it in once so nobody's
-    # past /ask context gets silently dropped.
+    
     history = row.get("history") or []
     legacy_ask_history = row.get("ask_history") or []
     if legacy_ask_history and not history:
@@ -483,9 +458,8 @@ def save_user_memory_async(user_id: int) -> None:
         daemon=True
     ).start()
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 #   FANCY UNICODE FONT HELPERS
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def bold(text: str) -> str:
     """Convert text to Unicode bold (Mathematical Bold)"""
@@ -895,16 +869,7 @@ NCERT_CHAPTERS = {
 }
 SUBJECT_EMOJI = {"Physics": "⚡", "Chemistry": "🧪", "Math": "📐", "Biology": "🧬"}
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#   PER-CHAPTER NOTES CACHE — real .txt knowledge base
-#   Instead of hand-typing static notes (huge, error-prone across 90+
-#   chapters), the bot GENERATES concise, accurate revision notes for a
-#   chapter the first time it's needed (via the same AI providers already
-#   used everywhere else) and SAVES them to notes/<Subject>/<Class>/<Chapter>.txt.
-#   Every quiz/flashcard request for that chapter afterwards reads the saved
-#   file instead of calling the AI cold — faster, consistent, and it's a real
-#   file on disk you can open and read/edit yourself.
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 NOTES_DIR = os.path.join(BASE_DIR, "notes")
 
 NOTES_SYSTEM_PROMPT = (
@@ -965,8 +930,8 @@ key_idx = {"groq": 0, "nvidia": 0, "deepseek": 0, "gemini": 0, "tavily": 0, "cer
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-THINKING_DOTS = ["🧠 ███▒▒▒▒▒▒▒ 20%", "🧠 ██████▒▒▒▒ 55%", "🧠 ██████████ 100%"]
-SCANNING_DOTS = ["🔍 ███▒▒▒▒▒▒▒ 20%", "🔍 ██████▒▒▒▒ 55%", "🔍 ██████████ 100%"]
+THINKING_DOTS = ["🧠 Thinking"]
+SCANNING_DOTS = ["🔍 Scanning"]
 
 
 OWNER_NAMES = ["shreyansh", "pathak", "shreyansh pathak", "owner", "creator", "admin", "developer"]
@@ -978,9 +943,7 @@ ABUSE_KEYWORDS = [
     "bhadwa", "ullu", "pagal", "bevkoof", "nikamma", "haramkhor", "hizda", "hizdu"
 ]
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #   MULTI-PROVIDER AI ENGINE
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def _rotate_key(provider: str, keys: list) -> str:
     key = keys[key_idx[provider]]
@@ -1052,9 +1015,7 @@ def _call_gemini(messages, system_prompt, max_tokens):
                     candidate = data["candidates"][0]
                     parts = candidate.get("content", {}).get("parts")
                     if not parts:
-                        # Thinking-enabled model spent the whole token budget on internal
-                        # reasoning and never produced visible text — give a clear reason
-                        # instead of a bare KeyError so it's obvious what happened.
+                        
                         reason = candidate.get("finishReason", "UNKNOWN")
                         raise Exception(f"Gemini returned no text (finishReason={reason}, likely ran out of tokens during thinking)")
                     text = parts[0]["text"]
@@ -1485,16 +1446,8 @@ def is_offtopic_chat(text: str) -> bool:
         return False
     return True
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #   NATURAL LANGUAGE INTENT DETECTION
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Instead of forcing /tip, /joke, /define etc., detect what the user wants
-# from their natural text — zero latency cost (keyword-based, no AI call).
 
-# Intent patterns: list of (keyword/phrase, requires_standalone) tuples.
-# "requires_standalone" means the word must appear on its own, not inside
-# a bigger word (e.g., "define" should match "define entropy" but not
-# "this is definitely wrong").
 
 _INTENT_PATTERNS = {
     "joke": [
@@ -2535,42 +2488,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ── Web App Login Integration ──
-    # Previously: bot showed an "🔓 Authorize Web Login" button, user had to
-    # tap it, which opened ANOTHER browser tab to actually verify. That's two
-    # extra taps + a page load. Since the bot already has user_id/username/
-    # first_name right here, it now calls the verify endpoint itself
-    # (server-to-server) — login completes the instant /start is tapped.
     if context.args and context.args[0].startswith("sess_"):
         session_id = context.args[0].partition("sess_")[2].strip()
         user = update.effective_user
         user_id = user.id
         username = user.username or ""
         first_name = user.first_name or ""
-
+        
         web_url = os.getenv("WEB_APP_URL", "https://brainyai.up.railway.app")
         verify_url = f"{web_url}/api/auth/verify?session_id={session_id}&user_id={user_id}&username={username}&first_name={first_name}"
-
-        try:
-            loop = asyncio.get_event_loop()
-            resp = await loop.run_in_executor(None, lambda: requests.get(verify_url, timeout=10))
-            if resp.status_code == 200:
-                await update.message.reply_text(
-                    f"✅ Logged in as {first_name}! Go back to your browser tab — it'll pick this up automatically."
-                )
-            else:
-                raise Exception(f"verify returned {resp.status_code}")
-        except Exception as e:
-            logger.error(f"Auto-verify failed, falling back to manual button: {e}")
-            # Fallback: same manual flow as before, so login still works even
-            # if the bot process couldn't reach the web server directly.
-            keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔓 Authorize Web Login", url=verify_url)]
-            ])
-            await update.message.reply_text(
-                "⚡ 𝗕𝗥𝗔𝗜𝗡𝗬 𝗪𝗲𝗯 𝗟𝗼𝗴𝗶𝗻 𝗥𝗲𝗾𝘂𝗲𝘀𝘁\n\n"
-                f"Hi {first_name}! Tap the button below to sign in to the web app/mini-app securely.",
-                reply_markup=keyboard
-            )
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔓 Authorize Web Login", url=verify_url)]
+        ])
+        
+        await update.message.reply_text(
+            "⚡ 𝗕𝗥𝗔𝗜𝗡𝗬 𝗪𝗲𝗯 𝗟𝗼𝗴𝗶𝗻 𝗥𝗲𝗾𝘂𝗲𝘀𝘁\n\n"
+            f"Hi {first_name}! Tap the button below to sign in to the web app/mini-app securely.",
+            reply_markup=keyboard
+        )
         return
 
     if is_group(update):
@@ -2604,7 +2540,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send(update,
         f"⚡ 𝗡𝗮𝗺𝗮𝘀𝘁𝗲, {user_name}! ⚡\n\n"
         "🤖 I'm 𝗕𝗥𝗔𝗜𝗡𝗬 — Your Personal AI Study Partner!\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "🎯 What I can do:\n"
 "→ Crack Physics, Chemistry, Math & Biology problems\n"
 "→ Break down numericals step-by-step — no shortcuts\n"
@@ -2612,7 +2548,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 "→ Run MCQ quizzes & build practice sets\n"
 "→ Pull up any subject's formulas instantly\n"
 "→ Answer GK, current affairs & tech questions\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         "📋 𝗖𝗼𝗺𝗺𝗮𝗻𝗱𝘀:\n"
         "⚡ /ask       — Fast answer\n"
         "🧠 /brainy    — Deep teacher-level explanation\n"
@@ -2637,7 +2573,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔍 /search    — Real-time web search\n"
         "🗑️ /clear     — Reset chat history\n"
         "ℹ️ /about     — About the bot\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         "👇 Or just tap below to jump straight into the full app:",
         reply_markup=launch_keyboard
     )
@@ -2674,7 +2610,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await send(update,
         "📋 𝗛𝗲𝗹𝗽 𝗠𝗲𝗻𝘂 — 𝗕𝗥𝗔𝗜𝗡𝗬\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "⚡ /ask       — Fast answer\n"
         "🧠 /brainy    — Deep teacher-level explanation\n"
         "🔢 /ask5      — 5 angles on one concept\n"
@@ -2699,7 +2635,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🗑️ /clear     — Reset chat history\n"
         "ℹ️ /about     — About the bot\n"
         "🏓 /ping      — Check bot response speed\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
     )
 
 
@@ -3065,8 +3001,8 @@ async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await maintenance_guard(update):
         return
     await send(update,
-        "ℹ️ 𝗔𝗯𝗼𝘂𝘁 𝗕𝗥𝗔𝗜𝗡𝗬 𝘃𝟳\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "ℹ️ 𝗔𝗯𝗼𝘂𝘁 𝗕𝗥𝗔𝗜𝗡𝗬 𝘃2\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "🤖 𝗪𝗵𝗮𝘁 𝗜 𝗮𝗺:\n"
         "→ Multi-provider AI Study Bot\n"
         "→ Built for CET / JEE / NEET students\n"
@@ -3095,7 +3031,7 @@ async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "→ Speed: 1-3 second replies\n"
         "→ Message limit: Zero\n"
         "→ Cost to you: Free\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         "👨‍💻 𝗗𝗲𝘃𝗲𝗹𝗼𝗽𝗲𝗿: Shreyansh Pathak\n"
         "🔗 @shreyanshhh_08\n"
         "📢 Channel: @aurabreaker7"
@@ -4054,28 +3990,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # NOTE: quiz answers used to be caught here as typed "A"/"B"/"C"/"D" — /quiz now
     # posts a native Telegram quiz poll instead, graded via handle_poll_answer().
 
-    # ── Answer directly in private chat too (same AI path used for groups) ──
-    # Previously this redirected every private message to the Mini App instead
-    # of answering. Users asking BRAINY something in Telegram now get their
-    # actual answer here — the app isn't forced on them.
-    if not msg_text.strip():
-        return
-    await msg.chat.send_action("typing")
-    await process_query(update, msg_text.strip())
-
-    # One-time nudge toward the web app — sent once per bot-process session per
-    # user (not on every single reply, which would get annoying fast) so people
-    # who'd prefer the fuller web experience still discover it.
-    if not context.user_data.get("web_tip_shown"):
-        context.user_data["web_tip_shown"] = True
-        web_url = os.getenv("WEB_APP_URL", "https://brainyai.up.railway.app")
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🚀 Try the BRAINY Web App", web_app=WebAppInfo(url=web_url))]
-        ])
-        await update.message.reply_text(
-            "💡 Tip: BRAINY also has a full web app — same brain, nicer screen. Tap below anytime.",
-            reply_markup=keyboard
-        )
+    # Redirect private chat messages to Telegram Mini App
+    web_url = os.getenv("WEB_APP_URL", "https://brainyai.up.railway.app")
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🚀 Launch BRAINY App", web_app=WebAppInfo(url=web_url))]
+    ])
+    await update.message.reply_text(
+        "👋 *Namaste!*\n\n"
+        "I have upgraded to a beautiful web application interface!\n"
+        "To start chatting, view stats, see saved notes, and access custom memory, "
+        "tap the button below to open the BRAINY Mini App directly inside Telegram! 👇",
+        reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
     return
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
