@@ -161,6 +161,7 @@ This project is configured for easy deployment on PaaS providers like Railway or
 ## ⚠️ Disclaimer
 
 **Personal Project:** This project was created for educational purposes, API testing, and personal skill development. It is **not intended for commercial or business use**. It is open-sourced purely for learning purposes.
+<br>
 **DATA WE STORE:-** <ul>
   <li>Telegram username-id - to assign and verify session id for web.</li>
   <li>Your chats are end-to-end encrypted, and are stored in hash values.</li>
@@ -168,7 +169,8 @@ This project is configured for easy deployment on PaaS providers like Railway or
   <li>Your poll responses are stored.</li>
   <li>Your IP is stored for the timeinterval you use BRAINY to apply rate limits, it is instantly removed from the databsae after closing the web.</li>
 </ul>
-<b>MYTHS:-</b> We do not store, log, or collect any of your sensitive information or personal data, because no sensitive data ever enters or rests on our systems, there is no data to leak or breach. All data is processed in real-time and immediately discarded after use.
+<br>
+<b>We do not store, log, or collect any of your sensitive information or personal data, because no sensitive data ever enters or rests on our systems, there is no data to leak or breach. All data is processed in real-time and immediately discarded after use.</b>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ⭐ Show Your Support
 
