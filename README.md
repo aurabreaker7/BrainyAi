@@ -166,10 +166,14 @@ This project is configured for easy deployment on PaaS providers like Railway or
   <li>Your chats are end-to-end encrypted, and are stored in hash values.</li>
   <li>Timestamp of chat, or time when user started the bot.</li>
   <li>Your poll responses are stored.</li>
+  <li>Your IP is stored for the timeinterval you use BRAINY to apply rate limits, it is instantly removed from the databsae after closing the web.</li>
 </ul>
 <b>MYTHS:-</b> We do not store, log, or collect any of your sensitive information or personal data, because no sensitive data ever enters or rests on our systems, there is no data to leak or breach. All data is processed in real-time and immediately discarded after use.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⭐ Show Your Support
 
+If you find this project useful, please consider giving it a **Star** and **[Following](https://github.com/aurabreaker7)** me on GitHub! It helps more developers discover the project and keeps me motivated to build more open-source tools.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## 📬 Contact & Links
 
 - **Creator:** Shreyansh Pathak
