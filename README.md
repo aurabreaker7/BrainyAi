@@ -178,7 +178,7 @@ This project is configured for easy deployment on PaaS providers like Railway or
 IP addresses are used only transiently, for security purposes:
 
 Rate limiting — IPs are held briefly in server memory to detect abuse (e.g. 100 requests/minute), and cleared automatically or on server restart.
-Security logging — if a request triggers abuse detection (rate-limit breach, malicious input pattern, server error), the IP is written to a local security.log file for forensic review. Normal, safe usage never generates a log entry.
+Security logging — if a request triggers abuse detection (rate-limit breach, malicious input pattern, server error), the IP is written to a local security.log file for forensic review. Normal, safe usage never generates a log entry. Limiting is not totally based on IP it also rely's on telegram userid.
 
 No IP address is ever linked to chat content, personal data, or stored in the Supabase database.</p>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
