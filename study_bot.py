@@ -441,6 +441,95 @@ def load_user_into_memory(user_id: int, first_name: str = "", username: str = ""
             print(f"[memory] restored {restored} messages for user {user_id} ({first_name})")
 
 
+
+# ── UNIFIED TELEGRAM ↔ WEB CHAT SYNC ──
+# The Web app (app.py) stores every chat in Supabase `chat_sessions` /
+# `chat_messages`. Historically the Telegram bot only kept its own in-memory
+# `user_conversations` history, so a Telegram exchange never showed up in the
+# user's Web chat history sidebar. These helpers mirror every Telegram
+# exchange into the same tables (reusing the user's most recent session, or
+# creating one titled "Telegram Chat" if they have none yet), so opening the
+# Web app later shows the Telegram conversation too, and vice versa.
+
+_telegram_session_cache: dict = {}   # user_id -> session_id (per-process cache)
+
+def _strip_level_ctx(text: str) -> str:
+    """Removes the internal '\\nStudent ka level: X.' suffix we append to
+    outgoing messages before saving it for cross-platform display."""
+    return re.sub(r"\nStudent ka level:.*$", "", text or "", flags=re.DOTALL).strip()
+
+
+def get_or_create_chat_session(user_id: int) -> str:
+    """Returns the id of the user's most recent chat_sessions row (shared with
+    the Web app), creating one titled 'Telegram Chat' if they have none yet.
+    Cached in-memory per process so we don't hit Supabase on every message."""
+    if user_id in _telegram_session_cache:
+        return _telegram_session_cache[user_id]
+    if not (SUPABASE_URL and SUPABASE_KEY):
+        return None
+    try:
+        resp = requests.get(
+            f"{SUPABASE_URL}/rest/v1/chat_sessions"
+            f"?user_id=eq.{user_id}&select=id&order=created_at.desc&limit=1",
+            headers=_supabase_headers(), timeout=8
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        if rows:
+            session_id = rows[0]["id"]
+        else:
+            import uuid as _uuid
+            session_id = str(_uuid.uuid4())
+            create_headers = _supabase_headers()
+            create_headers["Prefer"] = "return=minimal"
+            requests.post(
+                f"{SUPABASE_URL}/rest/v1/chat_sessions",
+                headers=create_headers,
+                json={"id": session_id, "user_id": user_id, "title": "Telegram Chat"},
+                timeout=8
+            )
+        _telegram_session_cache[user_id] = session_id
+        return session_id
+    except Exception as e:
+        print(f"[sync] get_or_create_chat_session failed (non-fatal): {str(e)[:80]}")
+        return None
+
+
+def _sb_insert_chat_message(session_id: str, role: str, content: str) -> None:
+    if not (SUPABASE_URL and SUPABASE_KEY and session_id):
+        return
+    try:
+        headers = _supabase_headers()
+        headers["Prefer"] = "return=minimal"
+        requests.post(
+            f"{SUPABASE_URL}/rest/v1/chat_messages",
+            headers=headers,
+            json={"session_id": session_id, "role": role, "content": content},
+            timeout=8
+        )
+    except Exception as e:
+        print(f"[sync] insert chat message failed (non-fatal): {str(e)[:80]}")
+
+
+def sync_to_web_history(user_id: int, user_msg: str, assistant_msg: str) -> None:
+    """Fire-and-forget (mirrors save_user_memory_async's pattern): mirrors a
+    Telegram exchange into the same chat_sessions/chat_messages tables the
+    Web app reads, so it shows up in the user's Web chat history too."""
+    clean_user_msg = _strip_level_ctx(user_msg)
+    if not clean_user_msg or not assistant_msg:
+        return
+
+    def _worker():
+        session_id = get_or_create_chat_session(user_id)
+        if not session_id:
+            return
+        _sb_insert_chat_message(session_id, "user", clean_user_msg)
+        _sb_insert_chat_message(session_id, "assistant", assistant_msg)
+
+    import threading
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 def save_user_memory_async(user_id: int) -> None:
     """Fire-and-forget: saves current in-memory state for user_id to Supabase."""
     import threading
@@ -2192,6 +2281,9 @@ async def _run_ai(update: Update, messages: list, system_prompt: str, max_tok: i
         # Save interaction for learning
         if last_user_msg and result:
             save_interaction(update.effective_user.id, last_user_msg, result, source)
+            # Mirror into the same Supabase tables the Web app reads, so this
+            # exchange shows up in the user's Web chat history too.
+            sync_to_web_history(update.effective_user.id, last_user_msg, result)
         return result
     except Exception as e:
         logger.error(f"AI error: {e}")
