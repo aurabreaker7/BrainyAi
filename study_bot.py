@@ -1019,8 +1019,8 @@ key_idx = {"groq": 0, "nvidia": 0, "deepseek": 0, "gemini": 0, "tavily": 0, "cer
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-THINKING_DOTS = ["🧠 Thinking"]
-SCANNING_DOTS = ["🔍 Scanning"]
+THINKING_DOTS = ["🧠 Thinking", "🧠 Thinking.", "🧠 Thinking.."]
+SCANNING_DOTS = ["🔍 Scanning", "🔍 Scanning.", "🔍 Scanning.."]
 
 
 OWNER_NAMES = ["shreyansh", "pathak", "shreyansh pathak", "owner", "creator", "admin", "developer"]
