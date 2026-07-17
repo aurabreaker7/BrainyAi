@@ -27,6 +27,22 @@
     --sidebar-width: 280px;
     --header-height: 60px;
     --transition-speed: 0.3s;
+    --highlight-color: rgba(232, 179, 57, 0.22);
+}
+
+:root[data-theme="light"] {
+    --bg-primary: #f7f8fb;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #eef1f7;
+    --border-color: #d6dcea;
+    --text-primary: #131722;
+    --text-secondary: #566178;
+    --text-muted: #8791a6;
+    --accent-color: #b7791f;
+    --accent-glow: rgba(183, 121, 31, 0.14);
+    --aura-color: #6d5bd7;
+    --aura-glow: rgba(109, 91, 215, 0.14);
+    --highlight-color: rgba(183, 121, 31, 0.18);
 }
 
 * {
@@ -541,7 +557,84 @@ body {
 .header-meta {
     display: flex;
     align-items: center;
+    gap: 10px;
     flex-shrink: 0;
+}
+
+.chat-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.search-wrapper {
+    position: relative;
+    width: min(32vw, 260px);
+}
+
+.search-wrapper input {
+    width: 100%;
+    height: 34px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    padding: 0 34px 0 12px;
+    font: inherit;
+    font-size: 13px;
+    outline: none;
+}
+
+.search-wrapper input:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.search-count {
+    position: absolute;
+    right: 9px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.message-bubble mark {
+    background: var(--highlight-color);
+    color: inherit;
+    border-radius: 4px;
+    padding: 0 2px;
+}
+
+.message-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.message-row.assistant:hover .message-actions,
+.message-row.assistant:focus-within .message-actions {
+    opacity: 1;
+}
+
+.message-action-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.message-action-btn:hover {
+    color: var(--accent-color);
+    border-color: var(--accent-color);
 }
 
 .message-counter {
@@ -1177,7 +1270,15 @@ body {
     }
 
     .header-title {
-        max-width: 55%;
+        max-width: 38%;
+    }
+
+    .search-wrapper {
+        width: 34vw;
+    }
+
+    .chat-tools {
+        gap: 6px;
     }
 
     .message-counter {
@@ -1337,6 +1438,15 @@ body {
                     <span id="active-chat-title">New Chat</span>
                 </div>
                 <div class="header-meta">
+                    <div class="chat-tools">
+                        <div class="search-wrapper">
+                            <input id="search-input" type="search" placeholder="Search messages" autocomplete="off">
+                            <span id="search-count" class="search-count"></span>
+                        </div>
+                        <button id="export-chat-btn" class="btn-icon-only" title="Download conversation"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3v12M7 10l5 5 5-5M5 21h14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                        <button id="copy-chat-btn" class="btn-icon-only" title="Copy conversation"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="8" y="8" width="11" height="13" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M5 16H4a2 2 0 01-2-2V5a2 2 0 012-2h9a2 2 0 012 2v1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+                        <button id="theme-toggle-btn" class="btn-icon-only" title="Theme: system"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3a9 9 0 100 18 7 7 0 010-18z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></button>
+                    </div>
                     <span id="message-counter" class="message-counter hidden">0/50</span>
                 </div>
             </header>
@@ -1524,6 +1634,9 @@ let currentMessageCount = 0;
 let currentMessageLimit = 50;
 let lastRenderedMessageCount = 0;   // used by cross-platform sync polling (Telegram ↔ Web)
 let syncPollInterval = null;
+let currentMessages = [];
+let currentSearchQuery = "";
+let currentThemeMode = localStorage.getItem("brainy-theme") || "system";
 
 // DOM Elements
 const loadingOverlay = document.getElementById("loading-overlay");
@@ -1548,6 +1661,11 @@ const typingIndicator = document.getElementById("typing-indicator");
 const messageCounter = document.getElementById("message-counter");
 const limitBanner = document.getElementById("limit-reached-banner");
 const limitNewChatBtn = document.getElementById("limit-new-chat-btn");
+const searchInput = document.getElementById("search-input");
+const searchCount = document.getElementById("search-count");
+const exportChatBtn = document.getElementById("export-chat-btn");
+const copyChatBtn = document.getElementById("copy-chat-btn");
+const themeToggleBtn = document.getElementById("theme-toggle-btn");
 
 // Modals
 const accountModal = document.getElementById("account-modal");
@@ -1561,6 +1679,9 @@ const tg = window.Telegram ? window.Telegram.WebApp : null;
 
 // On Load
 document.addEventListener("DOMContentLoaded", () => {
+    applyThemePreference();
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyThemePreference);
+
     // Textarea autosize event
     chatInput.addEventListener("input", autoSizeTextarea);
     
@@ -1588,6 +1709,13 @@ document.addEventListener("DOMContentLoaded", () => {
     // New Chat Click
     newChatBtn.addEventListener("click", startNewChat);
     limitNewChatBtn.addEventListener("click", startNewChat);
+    searchInput.addEventListener("input", () => {
+        currentSearchQuery = searchInput.value.trim();
+        renderMessages(currentMessages);
+    });
+    exportChatBtn.addEventListener("click", exportConversation);
+    copyChatBtn.addEventListener("click", copyConversation);
+    themeToggleBtn.addEventListener("click", cycleTheme);
 
     // Modal Triggers
     accountBtn.addEventListener("click", openAccountModal);
@@ -1914,28 +2042,37 @@ async function deleteSession(sessionId) {
 // ── MESSAGES VIEW & INTERACTION ──
 
 function renderMessages(messages) {
+    currentMessages = messages || [];
     messagesList.innerHTML = "";
     
-    if (messages.length === 0) {
+    if (currentMessages.length === 0) {
         welcomePrompt.classList.remove("hidden");
+        updateSearchCount(0);
         return;
     }
     
     welcomePrompt.classList.add("hidden");
     
-    messages.forEach(msg => {
-        appendMessageBubble(msg.role, msg.content);
+    let matchCount = 0;
+    currentMessages.forEach(msg => {
+        const result = appendMessageBubble(msg.role, msg.content, msg.created_at);
+        matchCount += result.matches;
     });
+    updateSearchCount(matchCount);
     
     scrollToBottom();
 }
 
-function appendMessageBubble(role, content) {
+function appendMessageBubble(role, content, createdAt = null) {
     const row = document.createElement("div");
     row.className = `message-row ${role}`;
+    row.dataset.role = role;
+    row.dataset.content = content || "";
+    if (createdAt) row.dataset.createdAt = createdAt;
 
     const bubble = document.createElement("div");
     bubble.className = "message-bubble";
+    let matches = 0;
 
     if (role === "assistant") {
         const avatar = document.createElement("div");
@@ -1944,18 +2081,28 @@ function appendMessageBubble(role, content) {
         row.appendChild(avatar);
         
         // Format response content (converting stashed codeblocks or HTML stashes)
-        bubble.innerHTML = formatAIResponse(content);
+        bubble.innerHTML = highlightSearchInHtml(formatAIResponse(content), currentSearchQuery);
+        matches = countMatches(content, currentSearchQuery);
     } else {
-        bubble.innerText = content;
+        if (currentSearchQuery) {
+            bubble.innerHTML = highlightPlainText(content, currentSearchQuery);
+            matches = countMatches(content, currentSearchQuery);
+        } else {
+            bubble.innerText = content;
+        }
     }
 
     row.appendChild(bubble);
+    if (role === "assistant") {
+        row.appendChild(createMessageActions(content));
+    }
     messagesList.appendChild(row);
     
     // Run Prism highlighting on any newly inserted code blocks
     if (role === "assistant") {
         Prism.highlightAllUnder(bubble);
     }
+    return { matches };
 }
 
 function formatAIResponse(text) {
@@ -2007,6 +2154,152 @@ function copyCodeText(text, button) {
     });
 }
 
+function createMessageActions(content) {
+    const actions = document.createElement("div");
+    actions.className = "message-actions";
+
+    const copyBtn = document.createElement("button");
+    copyBtn.className = "message-action-btn";
+    copyBtn.title = "Copy answer";
+    copyBtn.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="8" y="8" width="11" height="13" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M5 16H4a2 2 0 01-2-2V5a2 2 0 012-2h9a2 2 0 012 2v1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+    copyBtn.onclick = () => navigator.clipboard.writeText(stripHtml(content)).then(() => showToast("Answer copied.", "info"));
+
+    const shareBtn = document.createElement("button");
+    shareBtn.className = "message-action-btn";
+    shareBtn.title = "Share answer";
+    shareBtn.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 12h8M13 7l5 5-5 5M5 5h3a2 2 0 012 2v10a2 2 0 01-2 2H5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    shareBtn.onclick = () => shareAnswer(content);
+
+    actions.appendChild(copyBtn);
+    actions.appendChild(shareBtn);
+    return actions;
+}
+
+async function shareAnswer(content) {
+    try {
+        const resp = await fetch("/api/share", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({
+                session_id: activeSessionId,
+                content: stripHtml(content)
+            })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || "Share failed");
+        await navigator.clipboard.writeText(data.url);
+        showToast("Share link copied.", "info");
+    } catch (e) {
+        console.error("Share failed:", e);
+        showToast("Could not create share link.");
+    }
+}
+
+function highlightPlainText(text, query) {
+    const escaped = escapeHtml(text || "");
+    if (!query) return escaped;
+    return escaped.replace(new RegExp(`(${escapeRegExp(query)})`, "gi"), "<mark>$1</mark>");
+}
+
+function highlightSearchInHtml(html, query) {
+    if (!query) return html;
+    const temp = document.createElement("div");
+    temp.innerHTML = html;
+    const walker = document.createTreeWalker(temp, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+            const parent = node.parentElement;
+            if (!parent || ["SCRIPT", "STYLE", "CODE", "PRE"].includes(parent.tagName)) {
+                return NodeFilter.FILTER_REJECT;
+            }
+            return node.nodeValue.toLowerCase().includes(query.toLowerCase())
+                ? NodeFilter.FILTER_ACCEPT
+                : NodeFilter.FILTER_SKIP;
+        }
+    });
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(node => {
+        const span = document.createElement("span");
+        span.innerHTML = highlightPlainText(node.nodeValue, query);
+        node.replaceWith(...span.childNodes);
+    });
+    return temp.innerHTML;
+}
+
+function countMatches(text, query) {
+    if (!text || !query) return 0;
+    return (stripHtml(text).match(new RegExp(escapeRegExp(query), "gi")) || []).length;
+}
+
+function updateSearchCount(matches) {
+    searchCount.innerText = currentSearchQuery ? `${matches}` : "";
+}
+
+function buildConversationText() {
+    const title = activeChatTitle.innerText || "New Chat";
+    let text = `BRAINY Chat Export\nTitle: ${title}\nExported: ${new Date().toLocaleString()}\n\n`;
+    currentMessages.forEach(msg => {
+        const role = msg.role === "user" ? "User" : "BRAINY";
+        const when = msg.created_at ? new Date(msg.created_at).toLocaleString() : "No timestamp";
+        text += `[${when}] ${role}:\n${stripHtml(msg.content)}\n\n`;
+    });
+    return text;
+}
+
+function exportConversation() {
+    if (!currentMessages.length) {
+        showToast("No messages to export.", "info");
+        return;
+    }
+    const blob = new Blob([buildConversationText()], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `brainy_chat_${Date.now()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+async function copyConversation() {
+    if (!currentMessages.length) {
+        showToast("No messages to copy.", "info");
+        return;
+    }
+    await navigator.clipboard.writeText(buildConversationText());
+    showToast("Conversation copied.", "info");
+}
+
+function cycleTheme() {
+    const modes = ["system", "dark", "light"];
+    currentThemeMode = modes[(modes.indexOf(currentThemeMode) + 1) % modes.length];
+    localStorage.setItem("brainy-theme", currentThemeMode);
+    applyThemePreference();
+}
+
+function applyThemePreference() {
+    const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const resolved = currentThemeMode === "system" ? (systemDark ? "dark" : "light") : currentThemeMode;
+    document.documentElement.dataset.theme = resolved;
+    themeToggleBtn.title = `Theme: ${currentThemeMode}`;
+}
+
+function stripHtml(value) {
+    const temp = document.createElement("div");
+    temp.innerHTML = value || "";
+    return temp.textContent || temp.innerText || "";
+}
+
+function escapeHtml(value) {
+    const temp = document.createElement("div");
+    temp.innerText = value || "";
+    return temp.innerHTML;
+}
+
+function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 async function sendMessage() {
     const text = chatInput.value.trim();
     if (!text || !activeSessionId || currentMessageCount >= currentMessageLimit) return;
@@ -2020,6 +2313,7 @@ async function sendMessage() {
 
     // Append user message bubble
     appendMessageBubble("user", text);
+    currentMessages.push({ role: "user", content: text, created_at: new Date().toISOString() });
     scrollToBottom();
 
     // Show thinking indicator
@@ -2043,7 +2337,9 @@ async function sendMessage() {
         const data = await response.json().catch(() => ({}));
 
         if (response.ok) {
-            appendMessageBubble("assistant", data.content);
+            const assistantCreatedAt = new Date().toISOString();
+            appendMessageBubble("assistant", data.content, assistantCreatedAt);
+            currentMessages.push({ role: "assistant", content: data.content, created_at: assistantCreatedAt });
             scrollToBottom();
             updateMessageCounter(data.user_message_count, data.message_limit);
             lastRenderedMessageCount += 2; // user + assistant bubble we just appended locally
