@@ -27,7 +27,3 @@ BRAINY is built as an AI-powered study assistant and learning companion. You
 may use, improve, and adapt this project under the MIT License, but you are
 responsible for keeping your own API keys, tokens, Supabase credentials, and
 deployment secrets private.
-
-Please do not commit `.env` files, private keys, service-role credentials, or
-user data to any public repository.
-
