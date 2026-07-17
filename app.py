@@ -505,6 +505,18 @@ def send_message():
     system_prompt = study_bot.SYSTEM_PROMPT
     max_tok = None
 
+    # Ground the model in real facts about itself so it doesn't guess/hallucinate
+    # when the user asks about limits or features.
+    remaining = MESSAGE_LIMIT - new_count
+    system_prompt = (
+        system_prompt
+        + f"\n\nFACTS ABOUT THIS CHAT (answer accurately if asked, don't guess):\n"
+        f"- This session has a hard limit of {MESSAGE_LIMIT} messages total.\n"
+        f"- {new_count} messages used so far, {remaining} remaining.\n"
+        f"- Once the limit is hit, the user must start a new chat to continue.\n"
+        f"- Only the last 15 messages of a session are kept as context."
+    )
+
     user_profile = study_bot.get_user_data(user_id)
 
     if intent == "joke":
