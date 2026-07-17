@@ -172,9 +172,10 @@ This project is configured for easy deployment on PaaS providers like Railway or
 <br>
 <b>We do not store, log, or collect any of your sensitive information or personal data, because no sensitive data ever enters or rests on our systems, there is no data to leak or breach. All data is processed in real-time and immediately discarded after use.</b>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⭐ Show Your Support
+<br>
+<p>⭐ Show Your Support
 
-If you find this project useful, please consider giving it a **Star** and **[Following](https://github.com/aurabreaker7)** me on GitHub! It helps more developers discover the project and keeps me motivated to build more open-source tools.
+If you find this project useful, please consider giving it a **Star** and **[Following](https://github.com/aurabreaker7)** me on GitHub! It helps more developers discover the project and keeps me motivated to build more open-source tools.</p>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## 📬 Contact & Links
 
