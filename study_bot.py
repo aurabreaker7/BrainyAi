@@ -51,6 +51,53 @@ MOTIVATE_SYSTEM_PROMPT  = load_txt("motivate_prompt.txt")
 PLAN_SYSTEM_PROMPT      = load_txt("plan_prompt.txt")
 ASK5_SYSTEM_PROMPT      = load_txt("ask5_prompt.txt")
 
+FONTS_DIR = os.path.join(BASE_DIR, "fonts")
+
+def load_font_file(filename: str) -> str:
+    """Load a font/symbol reference file from the fonts folder."""
+    try:
+        with open(os.path.join(FONTS_DIR, filename), "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception as e:
+        print(f"Could not load {filename}: {e}")
+        return ""
+
+MATH_SYMBOLS       = load_font_file("math_symbols.txt")
+MONO_FONT          = load_font_file("mono_font_unicode.txt")
+BOLD_FONT          = load_font_file("bold_font_unicode.txt")
+ITALIC_FONT        = load_font_file("italic_font_unicode.txt")
+GREEK_LETTERS      = load_font_file("greek_letters.txt")
+MATH_OPERATORS     = load_font_file("math_operators.txt")
+MATH_RELATIONS     = load_font_file("math_relations.txt")
+MATH_ARROWS        = load_font_file("math_arrows.txt")
+CALCULUS_SYMBOLS   = load_font_file("calculus_symbols.txt")
+MATH_DISPLAY_RULES = load_font_file("math_display_rules.txt")
+
+ALL_SYMBOLS = "\n".join([
+    MATH_SYMBOLS,
+    MONO_FONT,
+    BOLD_FONT,
+    ITALIC_FONT,
+    GREEK_LETTERS,
+    MATH_OPERATORS,
+    MATH_RELATIONS,
+    MATH_ARROWS,
+    CALCULUS_SYMBOLS,
+    MATH_DISPLAY_RULES,
+])
+
+FONT_INSTRUCTIONS = """
+
+FONT AND MATH RENDERING RULES:
+1. Use Unicode symbols for math, physics, and chemistry whenever possible.
+2. Use Unicode bold for headings, vectors, matrices, and emphasis.
+3. Use Unicode italic for variables and scientific terms.
+4. Use Unicode monospace for short formulas, constants, and code-like snippets.
+5. Prefer real symbols such as α β γ δ θ π σ φ ω, × ÷ ± √ ∞ ∫ ∑ ∏ ∂ ∇ Δ, ≤ ≥ ≠ ≈ ≡ ∝, and → ← ↑ ↓ ↔ ⇒ ⇔.
+6. Never rely on raw markdown markers like **bold** or *italic* in final answers. The cleaner will convert them, but final output should already be Telegram-safe.
+7. For equations, write clean Unicode forms such as F = ma, E = mc², λ = wavelength, ∫ x² dx, and A ⇒ B.
+"""
+
 SYSTEM_PROMPT += """
 
 RESPONSE FORMATTING RULES:
@@ -88,6 +135,15 @@ RESPONSE FORMATTING RULES:
 """
 
 # ── Tokens 
+SYSTEM_PROMPT           = SYSTEM_PROMPT + "\n" + FONT_INSTRUCTIONS
+GROUP_SYSTEM_PROMPT     = GROUP_SYSTEM_PROMPT + "\n" + FONT_INSTRUCTIONS
+BRAINY_SYSTEM_PROMPT    = BRAINY_SYSTEM_PROMPT + "\n" + FONT_INSTRUCTIONS
+DEFINE_SYSTEM_PROMPT    = DEFINE_SYSTEM_PROMPT + "\n" + FONT_INSTRUCTIONS
+SUMMARIZE_SYSTEM_PROMPT = SUMMARIZE_SYSTEM_PROMPT + "\n" + FONT_INSTRUCTIONS
+TRANSLATE_SYSTEM_PROMPT = TRANSLATE_SYSTEM_PROMPT + "\n" + FONT_INSTRUCTIONS
+SEARCH_SYSTEM_PROMPT    = SEARCH_SYSTEM_PROMPT + "\n" + FONT_INSTRUCTIONS
+ASK5_SYSTEM_PROMPT      = ASK5_SYSTEM_PROMPT + "\n" + FONT_INSTRUCTIONS
+
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
@@ -593,6 +649,14 @@ def italic(text: str) -> str:
             result += ch
     return result
 
+def math_bold(text: str) -> str:
+    """Convert text to mathematical bold for headings, vectors, and emphasis."""
+    return bold(text)
+
+def math_italic(text: str) -> str:
+    """Convert text to mathematical italic for variables and scientific terms."""
+    return italic(text)
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #   RESPONSE CLEANER — Fixes **bold** markdown artifacts
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -631,14 +695,14 @@ def clean_response(text: str) -> str:
         code = m.group(1)
         placeholder = f"\x00CODEBLOCK{len(code_blocks)}\x00"
         code = code.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        code_blocks.append(f"<code>{code}</code>")
+        code_blocks.append(f"<code>{mono(code)}</code>")
         return placeholder
 
     def _stash_math(m):
         formula = m.group(1)
         placeholder = f"\x00CODEBLOCK{len(code_blocks)}\x00"
         formula = formula.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        code_blocks.append(f"<code>{formula}</code>")
+        code_blocks.append(f"<code>{mono(formula)}</code>")
         return placeholder
 
     # Fenced code blocks: ```lang\n...\n```
@@ -652,11 +716,11 @@ def clean_response(text: str) -> str:
     # ── Step 1-6: Existing bold/italic/heading processing (unchanged) ──
     def replace_bold(m):
         inner = m.group(1).strip()
-        return bold(inner) if inner else ""
+        return math_bold(inner) if inner else ""
 
     def replace_italic(m):
         inner = m.group(1).strip()
-        return italic(inner) if inner else ""
+        return math_italic(inner) if inner else ""
 
     # Step 1: **bold** → Unicode bold (non-greedy, handles multiline)
     text = re.sub(r'\*\*(.+?)\*\*', replace_bold, text, flags=re.DOTALL)
@@ -673,7 +737,7 @@ def clean_response(text: str) -> str:
     # Step 5: # headings → Unicode bold (so headings actually look bold, not plain text)
     def replace_heading(m):
         inner = m.group(2).strip()
-        return bold(inner) if inner else ""
+        return math_bold(inner) if inner else ""
     text = re.sub(r'^(#{1,6})\s+(.+)$', replace_heading, text, flags=re.MULTILINE)
 
     # Step 6: Remove remaining stray ** or * that weren't converted
@@ -690,6 +754,27 @@ def clean_response(text: str) -> str:
         text = text.replace(f"\x00CODEBLOCK{i}\x00", block)
 
     return text.strip()
+
+def code_to_monospace(text: str) -> str:
+    """Convert HTML code-tag content to Unicode monospace when a plain-text fallback is needed."""
+    if not text:
+        return text
+
+    def _convert_inline(m):
+        return mono(m.group(1))
+
+    def _convert_code_tag(m):
+        return f"<code>{mono(m.group(1))}</code>"
+
+    def _convert_pre_code(m):
+        attrs = m.group(1) or ""
+        code_content = m.group(2)
+        return f"<pre><code{attrs}>{mono(code_content)}</code></pre>"
+
+    text = re.sub(r'<pre><code([^>]*)>(.*?)</code></pre>', _convert_pre_code, text, flags=re.DOTALL)
+    text = re.sub(r'<code>(.*?)</code>', _convert_code_tag, text, flags=re.DOTALL)
+    text = re.sub(r'`([^`\n]+?)`', _convert_inline, text)
+    return text
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #   WEB SEARCH ENGINE — DuckDuckGo (no API key needed)
