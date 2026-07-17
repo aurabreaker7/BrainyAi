@@ -22,26 +22,12 @@ from security import (
 
 app = Flask(__name__)
 
-# CORS: with supports_credentials=True, browsers reject a wildcard origin anyway —
-# but being explicit avoids accidentally trusting arbitrary sites with cookie-bearing
-# requests. Set ALLOWED_ORIGINS on Railway as a comma-separated list, e.g.
-# "https://taskboard7.up.railway.app". Falls back to allow-all for local dev.
 _allowed_origins = os.getenv("ALLOWED_ORIGINS")
 if _allowed_origins:
     CORS(app, supports_credentials=True, origins=[o.strip() for o in _allowed_origins.split(",")])
 else:
     CORS(app, supports_credentials=True)
-# IMPORTANT: FLASK_SECRET_KEY must be set as a real env var on Railway. This key signs
-# the session cookie. The cookie only ever holds a user_id — never a password or token —
-# and Flask marks it HttpOnly by default, so it can't be read by page JS or stashed in
-# localStorage/sessionStorage.
-#
-# There is NO hardcoded fallback here on purpose. A hardcoded fallback string is
-# effectively public (it's sitting in the repo/chat history), so anyone who knows it
-# could forge a signed session cookie for any user_id — full account takeover. If the
-# env var is missing, we generate a random one for this process instead: sessions won't
-# survive a restart, but no attacker can forge cookies against a known key. The warning
-# below makes the misconfiguration loud instead of silently insecure.
+
 import secrets as _secrets
 _secret_key = os.getenv("FLASK_SECRET_KEY")
 if not _secret_key:
@@ -79,9 +65,7 @@ def handle_500(e):
 
 @app.errorhandler(Exception)
 def handle_uncaught(e):
-    # Catches anything that isn't already a handled HTTP error (DB errors,
-    # provider timeouts, etc.) so a crash never leaks a stack trace or HTML
-    # to the client — it always gets a clean JSON error it can toast.
+   
     from werkzeug.exceptions import HTTPException
     if isinstance(e, HTTPException):
         return e
