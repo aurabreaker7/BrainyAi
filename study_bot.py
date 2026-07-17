@@ -4129,19 +4129,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # NOTE: quiz answers used to be caught here as typed "A"/"B"/"C"/"D" — /quiz now
     # posts a native Telegram quiz poll instead, graded via handle_poll_answer().
 
-    # Redirect private chat messages to Telegram Mini App
-    web_url = os.getenv("WEB_APP_URL", "https://brainyai.up.railway.app")
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🚀 Launch BRAINY App", web_app=WebAppInfo(url=web_url))]
-    ])
-    await update.message.reply_text(
-        "👋 *Namaste!*\n\n"
-        "I have upgraded to a beautiful web application interface!\n"
-        "To start chatting, view stats, see saved notes, and access custom memory, "
-        "tap the button below to open the BRAINY Mini App directly inside Telegram! 👇",
-        reply_markup=keyboard,
-        parse_mode="Markdown"
-    )
+    if not msg_text.strip():
+        return
+
+    # ── ANSWER DIRECTLY IN TELEGRAM — NO FORCED WEB REDIRECT ──
+    # Web app remains available as an optional, non-blocking suggestion for
+    # genuinely brand-new users (no memory, no prior Telegram history yet).
+    is_brand_new_user = not data.get("level") and len(user_conversations.get(user_id, [])) == 0
+
+    await msg.chat.send_action("typing")
+    await process_query(update, msg_text)
+
+    if is_brand_new_user:
+        web_url = os.getenv("WEB_APP_URL", "https://brainyai.up.railway.app")
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🌐 Also try the Web App", web_app=WebAppInfo(url=web_url))]
+        ])
+        await update.message.reply_text(
+            "💡 Psst — I'm also available as a web app for a bigger screen and chat history, "
+            "totally optional!",
+            reply_markup=keyboard
+        )
     return
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
