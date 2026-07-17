@@ -173,6 +173,13 @@ This project is configured for easy deployment on PaaS providers like Railway or
 </ul>
 <br>
 <b>We do not store, log, or collect any of your sensitive information or personal data, because no sensitive data ever enters or rests on our systems, there is no data to leak or breach. All data is processed in real-time and immediately discarded after use. No user messages are stored when user chats in telegram private chat.</b>
+<p>BRAINY does not permanently store IP addresses in the database. User accounts, chat history, and memory are tied only to Telegram/session user IDs — never to IP addresses.
+IP addresses are used only transiently, for security purposes:
+
+Rate limiting — IPs are held briefly in server memory to detect abuse (e.g. 100 requests/minute), and cleared automatically or on server restart.
+Security logging — if a request triggers abuse detection (rate-limit breach, malicious input pattern, server error), the IP is written to a local security.log file for forensic review. Normal, safe usage never generates a log entry.
+
+No IP address is ever linked to chat content, personal data, or stored in the Supabase database.</p>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 <br>
 <p>⭐ Show Your Support
