@@ -2572,6 +2572,53 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await send(update, f"❌ Error scanning image: {str(e)[:100]}\n\n⏳ Try again in a bit!")
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def transcribe_audio(audio_bytes: bytes, filename: str = "voice.ogg") -> str:
+    if not GROQ_API_KEYS:
+        raise Exception("No Groq key configured for voice transcription")
+    key = _rotate_key("groq", GROQ_API_KEYS)
+    client = Groq(api_key=key)
+    audio_file = io.BytesIO(audio_bytes)
+    audio_file.name = filename
+    result = client.audio.transcriptions.create(
+        file=(filename, audio_file.read()),
+        model="whisper-large-v3-turbo",
+        response_format="text",
+        temperature=0,
+    )
+    return result.strip() if isinstance(result, str) else (getattr(result, "text", "") or "").strip()
+
+
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if is_group(update) and MAINTENANCE_MODE and not is_owner(update):
+        return
+    if await maintenance_guard(update):
+        return
+
+    msg = update.message
+    if not msg or not msg.voice:
+        return
+
+    _maybe_register_chat(update)
+    status_msg = await msg.reply_text("Transcribing your voice note...")
+    try:
+        file_obj = await context.bot.get_file(msg.voice.file_id)
+        buf = io.BytesIO()
+        await file_obj.download_to_memory(buf)
+        loop = asyncio.get_event_loop()
+        transcript = await loop.run_in_executor(None, lambda: transcribe_audio(buf.getvalue()))
+        if not transcript:
+            await status_msg.edit_text("I could not hear clear speech in that voice note. Try once more?")
+            return
+        await status_msg.edit_text(f"Transcribed:\n{transcript}")
+        await process_query(update, transcript)
+    except Exception as e:
+        logger.error(f"Voice transcription error: {e}")
+        try:
+            await status_msg.edit_text(f"Could not transcribe that voice note: {str(e)[:100]}")
+        except Exception:
+            await send(update, "Could not transcribe that voice note. Try again in a bit.")
+
+
 #   ALL COMMANDS
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -4173,6 +4220,11 @@ def main():
     app.add_handler(MessageHandler(
         filters.PHOTO | filters.Document.IMAGE,
         handle_image
+    ))
+
+    app.add_handler(MessageHandler(
+        filters.VOICE,
+        handle_voice
     ))
 
     # Handle all text messages (private + group — handle_message does the routing)
