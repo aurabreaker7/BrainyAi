@@ -4135,6 +4135,22 @@ def _maybe_register_chat(update: Update) -> None:
         supabase_register_user(chat.id, "group", chat.title or "", "")
 
 
+# ── WEB LINK DETECTION ──────────────────────────────────
+WEB_KEYWORDS = [
+    "web link", "website", "mini app", "web app", "open in web",
+    "web pe", "website link", "app link", "browser mein",
+    "web version", "online", "web par", "web url",
+    "web address", "site link", "open website",
+]
+
+def is_asking_for_web(text: str) -> bool:
+    """Check if user is asking for the web app link."""
+    if not text:
+        return False
+    t = text.lower().strip()
+    return any(kw in t for kw in WEB_KEYWORDS)
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     if not msg:
@@ -4221,11 +4237,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Web app remains available as an optional, non-blocking suggestion for
     # genuinely brand-new users (no memory, no prior Telegram history yet).
     is_brand_new_user = not data.get("level") and len(user_conversations.get(user_id, [])) == 0
+    wants_web_link = is_asking_for_web(msg_text)
 
     await msg.chat.send_action("typing")
     await process_query(update, msg_text)
 
-    if is_brand_new_user:
+    # ── AFTER process_query(): non-forced web link suggestion ──
+    # If user explicitly asked for the web link/site/mini app, send it as an
+    # inline button — in addition to (not instead of) the normal answer above.
+    if wants_web_link:
+        web_url = os.getenv("WEB_APP_URL", "https://brainyai.up.railway.app")
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🌐 Open BRAINY Web App", web_app=WebAppInfo(url=web_url))],
+            [InlineKeyboardButton("🔗 Copy Link", url=web_url)]
+        ])
+        await update.message.reply_text(
+            f"🌐 Here's the BRAINY web app link:\n\n"
+            f"`{web_url}`\n\n"
+            f"Tap the button below to open it in your browser or Telegram Mini App! 🚀",
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+    elif is_brand_new_user:
         web_url = os.getenv("WEB_APP_URL", "https://brainyai.up.railway.app")
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🌐 Also try the Web App", web_app=WebAppInfo(url=web_url))]
