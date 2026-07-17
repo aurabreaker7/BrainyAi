@@ -7,6 +7,7 @@ import json
 import urllib.parse
 import random
 import requests
+from html import escape
 from functools import wraps
 from flask import Flask, request, jsonify, session, send_from_directory
 from flask_cors import CORS
@@ -93,6 +94,7 @@ def format_for_web(text: str) -> str:
 # In-memory browser auth handshake sessions (short-lived, just for the login flow):
 # { session_id: { "status": "pending"|"authenticated", "user": { ... } } }
 auth_sessions = {}
+share_links = {}
 
 
 # ── SUPABASE HELPERS (chat_sessions / chat_messages) ──
@@ -158,7 +160,7 @@ def sb_delete_session(session_id: str, user_id: int) -> None:
 def sb_get_messages(session_id: str) -> list:
     r = requests.get(
         f"{SUPABASE_URL}/rest/v1/chat_messages"
-        f"?session_id=eq.{session_id}&select=role,content&order=id.asc",
+        f"?session_id=eq.{session_id}&select=role,content,created_at&order=id.asc",
         headers=_sb_headers(), timeout=10
     )
     r.raise_for_status()
@@ -168,7 +170,7 @@ def sb_get_messages(session_id: str) -> list:
 def sb_get_recent_messages(session_id: str, limit: int = 15) -> list:
     r = requests.get(
         f"{SUPABASE_URL}/rest/v1/chat_messages"
-        f"?session_id=eq.{session_id}&select=role,content&order=id.desc&limit={limit}",
+        f"?session_id=eq.{session_id}&select=role,content,created_at&order=id.desc&limit={limit}",
         headers=_sb_headers(), timeout=10
     )
     r.raise_for_status()
@@ -399,6 +401,52 @@ def get_chat_history(session_id):
         "user_message_count": user_msg_count,
         "message_limit": MESSAGE_LIMIT
     })
+
+
+@app.route("/api/share", methods=["POST"])
+@login_required
+def create_share_link():
+    user_id = session["user_id"]
+    data = request.json or {}
+    session_id = data.get("session_id")
+    content = (data.get("content") or "").strip()
+
+    if not session_id or not content:
+        return jsonify({"error": "Missing session_id or content"}), 400
+    if not sb_get_session(session_id, user_id):
+        return jsonify({"error": "Session not found"}), 404
+
+    share_id = uuid.uuid4().hex[:12]
+    share_links[share_id] = {
+        "content": content[:12000],
+        "title": data.get("title") or "BRAINY Answer",
+    }
+    return jsonify({"id": share_id, "url": urllib.parse.urljoin(request.url_root, f"share/{share_id}")})
+
+
+@app.route("/share/<share_id>", methods=["GET"])
+def view_shared_answer(share_id):
+    item = share_links.get(share_id)
+    if not item:
+        return "Shared answer not found or expired.", 404
+
+    title = escape(item.get("title") or "BRAINY Answer")
+    content = escape(item.get("content") or "")
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{title}</title>
+  <style>
+    body {{ margin:0; font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif; background:#0b0a14; color:#ede7f6; }}
+    main {{ max-width: 780px; margin: 0 auto; padding: 48px 20px; }}
+    h1 {{ font-size: 20px; margin: 0 0 18px; }}
+    article {{ white-space: pre-wrap; line-height: 1.65; background:#14111f; border:1px solid #322a4d; border-radius:14px; padding:22px; }}
+  </style>
+</head>
+<body><main><h1>{title}</h1><article>{content}</article></main></body>
+</html>"""
 
 
 @app.route("/api/chat/send", methods=["POST"])
