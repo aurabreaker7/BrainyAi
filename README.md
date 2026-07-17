@@ -48,7 +48,7 @@ Whether you need deep explanations for physics concepts, real-time web search, i
 ### 🌐 Web App Features
 | Feature | Description |
 |---------|-------------|
-| **Modern UI** | → ChatGPT-style interface with a sleek dark theme |
+| **Modern UI** | → Brainy-style interface with a sleek dark theme |
 | **Chat History** | → Persistent sessions saved securely in Supabase |
 | **Navigation** | → Collapsible sidebar with a mobile-friendly hamburger menu |
 | **Authentication** | → Seamless Telegram login integration |
@@ -56,6 +56,8 @@ Whether you need deep explanations for physics concepts, real-time web search, i
 | **Custom Memory** | → Memory viewer for learning context and liked notes |
 | **Code Highlighting**| → Prism.js syntax highlighting with one-click copy buttons |
 | **Responsive** | → Fully optimized for both mobile and desktop |
+| **Conversation export** | → Export chat to .txt or copy to clipboard |
+| **Theme** | → Fully optimized for light/dark mode |
 
 ### 📱 Telegram Bot Features
 | Feature | Description |
